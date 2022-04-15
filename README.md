@@ -1,27 +1,42 @@
-# Frobnicator
+# Chatter
 
-## Autorzy
-- Andrzej Głuszak (gr 9, @agluszak na githubie)
-- Linus Torvalds (Uniwersytet Helsiński, @torvalds na githubie)
+## Autorzy:
+	Kacper Kramarz-Fernandez,
+	mgr inż. (XD) Jan Zembowicz
 
-## Opis
-Od zawsze chcieliśmy napisać grę komputerową.
-Frobnicator będzie to gra platformowa, w której chodzi o to, żeby...
+## Opis:
 
-Z grubsza będziemy wzorować się na [tym tutorialu](https://dev.to/sbelzile/rust-platformer-part-1-bevy-and-ecs-2pci).
+	Projekt stanowi system prostego czatu o pojedynczym pokoju i dowolnej liczby klientów.
+	Dzieli się on na:
+	- Klient - umożliwia nadawanie wiadomości oraz odbieranie ich i wyświetlanie 
+	- Serwer - stanowi pokój, odbiera wiadomość wysłaną przez klienta i rozsyła ją do wszystkich pozostałych
 
-## Funkcjonalność
-- Generowanie map
-- Strzelanie
-- AI dla wrogów (bardziej rozbudowane niż w tutorialu)
-- Możliwość zapisywania i wczytywania stanu gry
-- Punktacja
+## Funkcje: (<i>"ponieważ funkcjonalność to stan, w którym coś funkcjonuje"</i> - Jan "prof. Miodek" Zembowicz)
+	
+	- Klient: dwuprocesowy program:
+		1. Wysyłanie wiadomości za pomocą requesta typu GET, wiadomość wysyłana w parametrze URL wraz z nią timestamp
+		2. Odbieranie wiadomości asynchronicznie za pomocą klienta WebSocket i wyświetlenie ich w terminalu
+	- Serwer: prawdopodobnie dwuwątkowy
+		1. Odbiera requesty HTTP od pojedynczego klienta
+		2. Wysyła odebraną wiadomość po WebSocket do wszystkich obecnie połączonych klientów
 
-## Propozycja podziału na części
-W pierwszej części stworzymy grę opartą na tutorialu (z lepszym AI) i jedną zahardcodowaną planszą.
+## Podział pracy
+	Uwaga: zaproponowany podział jest płynny!
+	
+	Początkowo
+	- Jan: podstawowa komunikacja sieciowa
+	- Kacper: przeniesienie zaimplementowanych mechanizmów przez Jan na kod o wyższej jakości, zgodny z dobrymi praktykami tworzenia oprogramowania w języku Rust
 
-W drugiej części dodamy do tego losowy generator map, zapisywanie/wczytywanie stanu gry oraz system punktacji.
+	Dodawanie nowych funkcji zależnie od potrzeb.
 
-## Biblioteki
-- Bevy
-- może coś do serializacji danych? (czy mógłby Pan coś polecić?)
+## Podział projektu na części
+    Sprint 1
+        - wysyłanie i odbieranie podstawowych komunikatów z timestampem,
+    Sprint 2
+        - wielowątkowy serwer (wiele pokoi), autentyfikacja, enkrypcja (?, https), blockchain (???)
+
+## Biblioteki i zależności:
+	
+	- Wysyłanie requestów HTTP: reqwest
+	- Serwer HTTP: ??? (prawdopodonie punktem wyjścia będzie jeden z przykładów biblioteki `hyper`)
+	- Serwer i klient WebSocket: ???
