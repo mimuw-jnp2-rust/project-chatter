@@ -1,5 +1,7 @@
+mod common;
+
+use crate::common::Message;
 use async_std::{
-    prelude::*,
     task,
 };
 use reqwest::{
@@ -48,41 +50,39 @@ fn get_line(prompt: &str) -> String {
 * Sends a `msg` with a timestamp to the given `addr` by the `client`.
 * @return: a future of the response
 */
-async fn send_msg(client: Client, addr: &str, msg: &str) -> Result<Response, Error> {
-    let since_epoch = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Clock may have gone backwards")
-        .as_secs();
-
-    let url = format!("{}{}{}{}{}{}", addr, "/send?",
-                      "&time=", since_epoch,
-                      "&msg=", msg,
-    );
-
-    let resp = client.get(url).send().await?;
+async fn send_msg(client: Client, addr: &str, msg: Message) -> Result<Response, Error> {
+    let resp = client
+        .post(addr.to_string() + "/post")
+        .body(msg.contents)
+        .send()
+        .await?;
     Ok(resp)
 }
 
+/* Greeting displayed at the start of the application. */
+fn greeting() {
+    println!("=== Welcome to Chatter ===");
+}
+
+/* */
 fn senders_start(iterations: usize) {
-    for _ in 0..iterations {
+    for i in 0..iterations {
         let input = get_line("Enter a message: ");
         task::block_on(async {
-            println!("Message '{}' sent",input);
-            let output = send_msg(Client::new(), "https://httpbin.org/", &*input).await;
+            println!("Message '{}' sent", input);
+            let msg = Message::new(&*format!("sender_{}", i), "hello there");
+            let output = send_msg(Client::new(), "https://httpbin.org/", msg).await;
             println!("{:?}", output);
         });
     }
 }
 
+/* */
 fn displayer_start() {
     println!("Starting displayer...");
     loop {
         println!("display...");
     };
-}
-
-fn greeting() {
-    println!("=== Welcome to Chatter ===");
 }
 
 
@@ -101,19 +101,6 @@ async fn main() -> Result<(), std::io::Error> {
             Ok(())
         }
         Party::Sender => {
-            //konsole -e /bin/bash --rcfile <(echo "echo hi")
-            Command::new( "konsole")
-                .arg("-e")
-                .arg("/bin/bash")
-                .arg("--rcfile")
-                .arg("<(echo \"echo hi\"")
-                // .arg("--")
-                // .arg("cargo")
-                // .arg("run")
-                // .arg("--")
-                // .arg("--display")
-                .spawn()?;
-            //Command::new("konsole").spawn().expect("");
             senders_start(2);
             Ok(())
         }
