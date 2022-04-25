@@ -19,6 +19,7 @@ use std::{
     },
 };
 
+
 #[derive(Debug)]
 enum Party {
     Sender = 0,
@@ -50,10 +51,11 @@ fn get_line(prompt: &str) -> String {
 * Sends a `msg` with a timestamp to the given `addr` by the `client`.
 * @return: a future of the response
 */
-async fn send_msg(client: Client, addr: &str, msg: Message) -> Result<Response, Error> {
+async fn send_msg(client: Client, addr: &str, msg: Message) -> Result<Response, anyhow::Error> {
+    let data = serde_json::to_string(&msg)?;
     let resp = client
         .post(addr.to_string() + "/post")
-        .body(msg.contents)
+        .body(data)
         .send()
         .await?;
     Ok(resp)
@@ -70,8 +72,8 @@ fn senders_start(iterations: usize) {
         let input = get_line("Enter a message: ");
         task::block_on(async {
             println!("Message '{}' sent", input);
-            let msg = Message::new(&*format!("sender_{}", i), "hello there");
-            let output = send_msg(Client::new(), "https://httpbin.org/", msg).await;
+            let msg = Message::new(&*format!("sender_{}", i), &input);
+            let output = send_msg(Client::new(), "http://0.0.0.0:8080", msg).await;
             println!("{:?}", output);
         });
     }
