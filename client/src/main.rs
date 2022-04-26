@@ -6,17 +6,11 @@ use async_std::{
 };
 use reqwest::{
     Response,
-    Error,
     Client,
 };
 use std::{
     io::stdin,
-    process::Command,
     str::FromStr,
-    time::{
-        SystemTime,
-        UNIX_EPOCH,
-    },
 };
 
 
@@ -51,7 +45,8 @@ fn get_line(prompt: &str) -> String {
 * Sends a `msg` with a timestamp to the given `addr` by the `client`.
 * @return: a future of the response
 */
-async fn send_msg(client: Client, addr: &str, msg: Message) -> Result<Response, anyhow::Error> {
+async fn send_msg(addr: &str, msg: Message) -> Result<Response, anyhow::Error> {
+    let client = Client::new();
     let data = serde_json::to_string(&msg)?;
     let resp = client
         .post(addr.to_string() + "/post")
@@ -71,10 +66,17 @@ fn senders_start(iterations: usize) {
     for i in 0..iterations {
         let input = get_line("Enter a message: ");
         task::block_on(async {
-            println!("Message '{}' sent", input);
             let msg = Message::new(&*format!("sender_{}", i), &input);
-            let output = send_msg(Client::new(), "http://0.0.0.0:8080", msg).await;
-            println!("{:?}", output);
+            let response = send_msg("http://0.0.0.0:8080", msg).await;
+            
+            // Print err on send failure -> fails only on request fail, does not read the response!
+	    match response {
+                Ok(resp_data) => {
+		    println!("Sent - Server code: {}", resp_data.status());
+		},
+		     
+	        _ => println!("Fail... {:?}", response.unwrap()),
+	    }
         });
     }
 }

@@ -40,3 +40,15 @@
 	- Wysyłanie requestów HTTP: reqwest
 	- Serwer HTTP: ??? (prawdopodonie punktem wyjścia będzie jeden z przykładów biblioteki `hyper`)
 	- Serwer i klient WebSocket: ???
+
+
+## Struktura repo
+	- server - folder z projektem servera
+	- client - folder z projektem clienta
+	- common - wspolny kod dla obu projektow, umieszczony poprzez symlinki w folderach server i client 
+
+	W razie jakby nie dzialalo utworzyc nowe: Otworzyc terminal w folderze clienta/servera, usunac stare i wykonac komende "ln -s ../../common/common.rs"
+
+## Uruchomienie
+
+	Uruchomienie clienta jest niestandardowe, nalezy uzyc skryptu client/run_client.sh

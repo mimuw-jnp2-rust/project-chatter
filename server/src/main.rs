@@ -10,31 +10,37 @@ use std::sync::Arc;
 
 mod handler;
 mod router;
+mod common;
 
 type Response = hyper::Response<hyper::Body>;
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
+
+// TODO Dodac utilsy do kolejki
 #[derive(Clone, Debug)]
 pub struct AppState {
-    pub state_thing: String,
+    pub name: String,
 }
 
 #[tokio::main]
 async fn main() {
-    let some_state = "state".to_string();
 
+    // Register endpoints
     let mut router: Router = Router::new();
-    router.get("/test", Box::new(handler::test_handler));
+    router.get("/test",  Box::new(handler::test_handler));
     router.post("/post", Box::new(handler::send_handler));
 
 
     let shared_router = Arc::new(router);
+
     let new_service = make_service_fn(move |_| {
+
         let app_state = AppState {
-            state_thing: some_state.clone(),
+            name: "Pre websocket server".to_string(),
         };
 
         let router_capture = shared_router.clone();
+
         async {
             Ok::<_, Error>(service_fn(move |req| {
                 route(router_capture.clone(), req, app_state.clone())
@@ -48,11 +54,8 @@ async fn main() {
     let _ = server.await;
 }
 
-async fn route(
-    router: Arc<Router>,
-    req: Request<hyper::Body>,
-    app_state: AppState,
-) -> Result<Response, Error> {
+async fn route(router: Arc<Router>, req: Request<hyper::Body>,app_state: AppState,) -> Result<Response, Error> {
+
     let found_handler = router.route(req.uri().path(), req.method());
     let resp = found_handler
         .handler
@@ -68,6 +71,7 @@ pub struct Context {
     pub params: Params,
     body_bytes: Option<Bytes>,
 }
+
 
 impl Context {
     pub fn new(state: AppState, req: Request<Body>, params: Params) -> Context {

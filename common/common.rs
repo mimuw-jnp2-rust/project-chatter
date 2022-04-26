@@ -1,6 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
-use chrono::{DateTime};
+use serde::{Serialize,Deserialize};
 
+
+
+#[derive(Serialize, Deserialize)]
 pub struct Message {
     pub author: String,
     pub contents: String,
@@ -8,6 +11,8 @@ pub struct Message {
 }
 
 impl Message {
+    // Used only in client
+    #[allow(dead_code)] 
     pub fn new(author: &str, contents: &str) -> Message {
         Message {
             author: author.to_string(),
@@ -17,12 +22,5 @@ impl Message {
                 .expect("Clock may have gone backwards")
                 .as_secs()
         }
-    }
-    pub fn to_get_string(&self, addr: &str) -> String {
-        format!("{}{}{}{}{}{}{}{}", addr, "/send?",
-                "&time=", self.timestamp,
-                "&author=", self.author,
-                "&msg=", self.contents,
-        )
     }
 }
