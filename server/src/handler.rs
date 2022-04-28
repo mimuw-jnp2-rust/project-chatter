@@ -29,7 +29,14 @@ pub async fn send_handler(mut ctx: Context) -> Response {
         received_msg.author, received_msg.contents, received_msg.timestamp 
     );
 
+    let sent_str = serde_json::to_string(&received_msg).unwrap();
+
     // TODO SEND MSG TO ALL CLIENTS HERE, EXTRACT SENDING OBJ FROM ctx.state !
+    for (user,connection) in &ctx.state.clone().lock().unwrap().ws_clients {
+
+        let splash_msg = Ok(warp::ws::Message::text( sent_str.clone() ));
+        let _ = connection.sender.as_ref().unwrap().send(splash_msg);
+    }
     // ctx.state.lock(). i tutaj teges
 
     return hyper::Response::builder()

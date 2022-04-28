@@ -31,8 +31,8 @@ pub async fn client_connection(ws: WebSocket,app: Arc<Mutex<AppState>>) {
     };
 
 
-    let splashMsg = Ok(warp::ws::Message::text("Welcome"));
-    let _ = new_client.sender.as_ref().unwrap().send(splashMsg);
+    let splash_msg = Ok(warp::ws::Message::text("Welcome"));
+    let _ = new_client.sender.as_ref().unwrap().send(splash_msg);
 
     app.lock().unwrap().ws_clients.insert(new_client.client_id.clone(), new_client);
 }
