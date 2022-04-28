@@ -58,25 +58,29 @@ async fn send_msg(addr: &str, msg: Message) -> Result<Response, anyhow::Error> {
 
 /* Greeting displayed at the start of the application. */
 fn greeting() {
-    println!("=== Welcome to Chatter ===");
+    println!("==========================");
+    println!("=   Welcome to Chatter   =");
+    println!("==========================");
+    println!("");	
+    println!("Press CTRL + C to exit.");
+    println!("");
 }
 
 /* */
-fn senders_start(iterations: usize) {
-    for i in 0..iterations {
-        let input = get_line("Enter a message: ");
+fn senders_start() {
+
+    let nickname = get_line("Enter a nickname:");
+	
+    println!("Your nickname is {}",&nickname);
+    loop{
+        let input = get_line("Enter a message:");
         task::block_on(async {
-            let msg = Message::new(&*format!("sender_{}", i), &input);
+            let msg = Message::new(&nickname, &input);
             let response = send_msg("http://0.0.0.0:8080", msg).await;
             
             // Print err on send failure -> fails only on request fail, does not read the response!
-	    match response {
-                Ok(resp_data) => {
-		    println!("Sent - Server code: {}", resp_data.status());
-		},
-		     
-	        _ => println!("Fail... {:?}", response.unwrap()),
-	    }
+	    let status = response.expect("Msg failed to be send").status();
+	    println!("Sent - Server code: {}",status);
         });
     }
 }
@@ -88,6 +92,7 @@ fn displayer_start() {
         println!("display...");
     };
 }
+
 
 
 #[tokio::main]
@@ -105,7 +110,7 @@ async fn main() -> Result<(), std::io::Error> {
             Ok(())
         }
         Party::Sender => {
-            senders_start(2);
+            senders_start();
             Ok(())
         }
     }
