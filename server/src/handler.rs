@@ -4,7 +4,9 @@ use hyper::StatusCode;
 use crate::common::Message;
 
 pub async fn test_handler(ctx: Context) -> String {
-    format!("test called, state_thing was: {}", ctx.state.name)
+	
+    let app = ctx.state.lock().unwrap();
+    format!("test called, state_thing was: {}, counter value: {}", app.name, app.counter)
 }
 
 pub async fn send_handler(mut ctx: Context) -> Response {

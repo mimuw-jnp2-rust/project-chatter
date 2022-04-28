@@ -6,7 +6,8 @@ use hyper::{
 };
 use route_recognizer::Params;
 use router::Router;
-use std::sync::Arc;
+use std::sync::{Arc,Mutex};
+use std::{thread, time};
 
 mod handler;
 mod router;
@@ -20,41 +21,72 @@ type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 #[derive(Clone, Debug)]
 pub struct AppState {
     pub name: String,
+    pub counter: u64,
+    // O tutaj mapa userow, Appstate wchodzi zawsze do endpointa z ktorego mozna bedzie striggerowac wysłanie
 }
 
 #[tokio::main]
 async fn main() {
 
-    // Register endpoints
-    let mut router: Router = Router::new();
-    router.get("/test",  Box::new(handler::test_handler));
-    router.post("/post", Box::new(handler::send_handler));
+	let mut app = Arc::new(Mutex::new(AppState {
+	    name: "Pre websocket server".to_string(),
+	    counter: 0,
+	}));
 
+	let http = tokio::spawn(make_http(app.clone()));
+	let ws   = tokio::spawn(make_ws(app.clone()));
+	
+	let _ = ws.await;
+	let _ = http.await;
+}
 
-    let shared_router = Arc::new(router);
+async fn make_ws(app: Arc<Mutex<AppState>>){
+	println!("WS...");
+	let sleep_time = time::Duration::from_millis(1000);
+	loop{
+		app.lock().unwrap().counter += 1;
+		thread::sleep(sleep_time);
+	}
+}
+
+async fn make_http(app: Arc<Mutex<AppState>>){
+
+    let shared_router = make_routing_map();
+
 
     let new_service = make_service_fn(move |_| {
 
-        let app_state = AppState {
-            name: "Pre websocket server".to_string(),
-        };
 
+	let app_capture = app.clone();
         let router_capture = shared_router.clone();
 
         async {
             Ok::<_, Error>(service_fn(move |req| {
-                route(router_capture.clone(), req, app_state.clone())
+                route(router_capture.clone(), req, app_capture.clone())
             }))
         }
     });
 
     let addr = "0.0.0.0:8080".parse().expect("address creation works");
     let server = Server::bind(&addr).serve(new_service);
-    println!("Listening on http://{}", addr);
+    println!("HTTP open on http://{}", addr);
     let _ = server.await;
 }
 
-async fn route(router: Arc<Router>, req: Request<hyper::Body>,app_state: AppState,) -> Result<Response, Error> {
+fn make_routing_map() -> Arc<Router>
+{
+    // Register endpoints
+    let mut router: Router = Router::new();
+    router.get("/test",  Box::new(handler::test_handler));
+    router.post("/post", Box::new(handler::send_handler));
+
+
+    return Arc::new(router);
+}
+
+
+
+async fn route(router: Arc<Router>, req: Request<hyper::Body>,app_state: Arc<Mutex<AppState>>) -> Result<Response, Error> {
 
     let found_handler = router.route(req.uri().path(), req.method());
     let resp = found_handler
@@ -66,7 +98,7 @@ async fn route(router: Arc<Router>, req: Request<hyper::Body>,app_state: AppStat
 
 #[derive(Debug)]
 pub struct Context {
-    pub state: AppState,
+    pub state: Arc<Mutex<AppState>>,
     pub req: Request<Body>,
     pub params: Params,
     body_bytes: Option<Bytes>,
@@ -74,7 +106,7 @@ pub struct Context {
 
 
 impl Context {
-    pub fn new(state: AppState, req: Request<Body>, params: Params) -> Context {
+    pub fn new(state: Arc<Mutex<AppState>>, req: Request<Body>, params: Params) -> Context {
         Context {
             state,
             req,
