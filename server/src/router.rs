@@ -37,7 +37,7 @@ impl Router {
             method_map: HashMap::default(),
         }
     }
-
+    
     pub fn get(&mut self, path: &str, handler: Box<dyn Handler>) {
         self.method_map
             .entry(Method::GET)

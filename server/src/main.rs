@@ -7,69 +7,89 @@ use hyper::{
 use route_recognizer::Params;
 use router::Router;
 use std::sync::{Arc,Mutex};
-use std::{thread, time};
+use tokio::sync::mpsc;
+use std::{thread, time,convert::Infallible};
+use warp::{Filter, Rejection};
+use std::collections::HashMap;
+
 
 mod handler;
 mod router;
 mod common;
+mod ws;
 
 type Response = hyper::Response<hyper::Body>;
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
+type ResultWS<T> = std::result::Result<T, Rejection>;
 
 
-// TODO Dodac utilsy do kolejki
+#[derive(Debug, Clone)]
+pub struct WSClient {
+    pub client_id: String,
+    pub sender: Option<mpsc::UnboundedSender<std::result::Result<warp::ws::Message, warp::Error>>>,
+}
+
+
+type WSClientsMap = HashMap<String, WSClient>;
+
 #[derive(Clone, Debug)]
 pub struct AppState {
     pub name: String,
     pub counter: u64,
+    pub ws_clients: WSClientsMap,
     // O tutaj mapa userow, Appstate wchodzi zawsze do endpointa z ktorego mozna bedzie striggerowac wysłanie
 }
 
 #[tokio::main]
 async fn main() {
 
-	let mut app = Arc::new(Mutex::new(AppState {
+	let app = Arc::new(Mutex::new(AppState {
 	    name: "Pre websocket server".to_string(),
 	    counter: 0,
+	    ws_clients: HashMap::new(),
 	}));
 
-	let http = tokio::spawn(make_http(app.clone()));
-	let ws   = tokio::spawn(make_ws(app.clone()));
-	
+	let http = tokio::spawn(run_http(app.clone()));
+	let ws   = tokio::spawn(run_ws(app.clone()));
+
 	let _ = ws.await;
 	let _ = http.await;
 }
 
-async fn make_ws(app: Arc<Mutex<AppState>>){
-	println!("WS...");
-	let sleep_time = time::Duration::from_millis(1000);
-	loop{
-		app.lock().unwrap().counter += 1;
-		thread::sleep(sleep_time);
-	}
+async fn run_ws(app: Arc<Mutex<AppState>>){
+	println!("Preparing WS...");
+
+        let ws_route = warp::path("ws")
+            .and(warp::ws())
+            .and_then(handler::ws_handler);
+
+        let routes = ws_route.with(warp::cors().allow_any_origin());
+        println!("WS open on 127.0.0.1:8000/ws ...");
+        warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
 }
 
-async fn make_http(app: Arc<Mutex<AppState>>){
+fn with_clients(clients: AppState) -> impl Filter<Extract = (AppState,), Error = Infallible> + Clone {
+    warp::any().map(move || clients.clone())
+}
 
-    let shared_router = make_routing_map();
 
-
+async fn run_http(app: Arc<Mutex<AppState>>){
+    
+    println!("Preparing HTTP...");
     let new_service = make_service_fn(move |_| {
 
-
 	let app_capture = app.clone();
-        let router_capture = shared_router.clone();
 
         async {
             Ok::<_, Error>(service_fn(move |req| {
-                route(router_capture.clone(), req, app_capture.clone())
+                route(make_routing_map(), req, app_capture.clone())
             }))
         }
     });
 
-    let addr = "0.0.0.0:8080".parse().expect("address creation works");
+    let addr = "127.0.0.1:8080".parse().expect("address creation works");
     let server = Server::bind(&addr).serve(new_service);
-    println!("HTTP open on http://{}", addr);
+    println!("HTTP open on {}", addr);
     let _ = server.await;
 }
 
@@ -101,7 +121,7 @@ pub struct Context {
     pub state: Arc<Mutex<AppState>>,
     pub req: Request<Body>,
     pub params: Params,
-    body_bytes: Option<Bytes>,
+    body_bytes: Option<hyper::body::Bytes>,
 }
 
 

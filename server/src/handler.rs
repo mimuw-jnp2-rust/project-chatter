@@ -1,6 +1,6 @@
-use crate::{Context, Response};
+use crate::{Context, Response, ws, ResultWS};
 use hyper::StatusCode;
-
+use warp::Reply;
 use crate::common::Message;
 
 pub async fn test_handler(ctx: Context) -> String {
@@ -27,9 +27,16 @@ pub async fn send_handler(mut ctx: Context) -> Response {
     );
 
     // TODO SEND MSG TO ALL CLIENTS HERE, EXTRACT SENDING OBJ FROM ctx.state !
+    // ctx.state.lock(). i tutaj teges
 
     return hyper::Response::builder()
         .status(StatusCode::OK)
         .body("OK".into())
         .unwrap();
+}
+
+
+pub async fn ws_handler(ws: warp::ws::Ws) -> ResultWS<impl Reply> {
+    println!("ws_handler");
+    Ok(ws.on_upgrade(move |socket| ws::client_connection(socket)))
 }
