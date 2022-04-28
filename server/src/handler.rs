@@ -2,6 +2,9 @@ use crate::{Context, Response, ws, ResultWS};
 use hyper::StatusCode;
 use warp::Reply;
 use crate::common::Message;
+use crate::Arc;
+use crate::Mutex;
+use crate::AppState;
 
 pub async fn test_handler(ctx: Context) -> String {
 	
@@ -36,7 +39,7 @@ pub async fn send_handler(mut ctx: Context) -> Response {
 }
 
 
-pub async fn ws_handler(ws: warp::ws::Ws) -> ResultWS<impl Reply> {
+pub async fn ws_handler(ws: warp::ws::Ws, app: Arc<Mutex<AppState>>) -> ResultWS<impl Reply> {
     println!("ws_handler");
-    Ok(ws.on_upgrade(move |socket| ws::client_connection(socket)))
+    Ok(ws.on_upgrade(move |socket| ws::client_connection(socket,app)))
 }

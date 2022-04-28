@@ -61,6 +61,7 @@ async fn run_ws(app: Arc<Mutex<AppState>>){
 
         let ws_route = warp::path("ws")
             .and(warp::ws())
+            .and(with_clients(app.clone()))
             .and_then(handler::ws_handler);
 
         let routes = ws_route.with(warp::cors().allow_any_origin());
@@ -68,7 +69,7 @@ async fn run_ws(app: Arc<Mutex<AppState>>){
         warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
 }
 
-fn with_clients(clients: AppState) -> impl Filter<Extract = (AppState,), Error = Infallible> + Clone {
+fn with_clients(clients: Arc<Mutex<AppState>>) -> impl Filter<Extract = (Arc<Mutex<AppState>>,), Error = Infallible> + Clone {
     warp::any().map(move || clients.clone())
 }
 
