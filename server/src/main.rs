@@ -15,7 +15,6 @@ use std::collections::HashMap;
 
 mod handler;
 mod router;
-mod common;
 mod ws;
 
 type Response = hyper::Response<hyper::Body>;

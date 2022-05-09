@@ -1,8 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Serialize,Deserialize};
 
-
-
 #[derive(Serialize, Deserialize)]
 pub struct Message {
     pub author: String,

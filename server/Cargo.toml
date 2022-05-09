@@ -1,10 +1,11 @@
 [package]
 name = "server"
+authors = ["Kacper Kramarz-Fernandez, Jan Zembowicz"]
 version = "0.1.0"
-authors = ["-"]
 edition = "2021"
 
 [dependencies]
+common = { path = "../common" }
 futures = { version = "0.3.6", default-features = false, features = ["async-await"] }
 hyper = "0.14"
 tokio = { version= "1", features = ["full"] }

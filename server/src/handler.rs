@@ -1,7 +1,7 @@
+use common::Message;
 use crate::{Context, Response, ws, ResultWS};
 use hyper::StatusCode;
 use warp::Reply;
-use crate::common::Message;
 use crate::Arc;
 use crate::Mutex;
 use crate::AppState;
@@ -13,7 +13,7 @@ pub async fn test_handler(ctx: Context) -> String {
 }
 
 pub async fn send_handler(mut ctx: Context) -> Response {
-    let received_msg: Message = match ctx.body_json().await {
+    let received_msg: common::Message = match ctx.body_json().await {
         Ok(v) => v,
         Err(e) => {
             println!("FAIL");

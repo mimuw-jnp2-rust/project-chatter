@@ -1,18 +1,7 @@
-mod common;
-
-use crate::common::Message;
-use async_std::{
-    task,
-};
-use reqwest::{
-    Response,
-    Client,
-};
-use std::{
-    io::stdin,
-    str::FromStr,
-};
-
+use common::Message;
+use async_std::task;
+use reqwest::{Response, Client};
+use std::{io::stdin, str::FromStr};
 
 #[derive(Debug)]
 enum Party {
@@ -45,7 +34,7 @@ fn get_line(prompt: &str) -> String {
 * Sends a `msg` with a timestamp to the given `addr` by the `client`.
 * @return: a future of the response
 */
-async fn send_msg(addr: &str, msg: Message) -> Result<Response, anyhow::Error> {
+async fn send_msg(addr: &str, msg: common::Message) -> Result<Response, anyhow::Error> {
     let client = Client::new();
     let data = serde_json::to_string(&msg)?;
     let resp = client
@@ -61,9 +50,9 @@ fn greeting() {
     println!("==========================");
     println!("=   Welcome to Chatter   =");
     println!("==========================");
-    println!("");	
+    println!();
     println!("Press CTRL + C to exit.");
-    println!("");
+    println!();
 }
 
 /* */
@@ -75,7 +64,7 @@ fn senders_start() {
     loop{
         let input = get_line("Enter a message:");
         task::block_on(async {
-            let msg = Message::new(&nickname, &input);
+            let msg = common::Message::new(&nickname, &input);
             let response = send_msg("http://0.0.0.0:8080", msg).await;
             
             // Print err on send failure -> fails only on request fail, does not read the response!
@@ -116,3 +105,10 @@ async fn main() -> Result<(), std::io::Error> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() {
+        assert_eq!(1, 1);
+    }
+}
