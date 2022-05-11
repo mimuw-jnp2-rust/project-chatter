@@ -1,5 +1,6 @@
+use serde::{Deserialize, Serialize};
+use std::fmt::{self, Display};
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Serialize,Deserialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct Message {
@@ -8,9 +9,15 @@ pub struct Message {
     pub timestamp: u64,
 }
 
+impl Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", 1, 2)
+    }
+}
+
 impl Message {
     // Used only in client
-    #[allow(dead_code)] 
+    #[allow(dead_code)]
     pub fn new(author: &str, contents: &str) -> Message {
         Message {
             author: author.to_string(),
@@ -18,7 +25,7 @@ impl Message {
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Clock may have gone backwards")
-                .as_secs()
+                .as_secs(),
         }
     }
 }
