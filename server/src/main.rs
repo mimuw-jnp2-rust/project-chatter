@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use hyper::{
     body::to_bytes,
     service::{make_service_fn, service_fn},
@@ -6,12 +5,13 @@ use hyper::{
 };
 use route_recognizer::Params;
 use router::Router;
-use std::sync::{Arc,Mutex};
-use tokio::sync::mpsc;
-use std::{thread, time,convert::Infallible};
-use warp::{Filter, Rejection};
 use std::collections::HashMap;
-
+use std::convert::Infallible;
+use std::net::SocketAddr;
+use std::ops::Deref;
+use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
+use warp::{Filter, Rejection};
 
 mod handler;
 mod router;
@@ -21,109 +21,103 @@ type Response = hyper::Response<hyper::Body>;
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 type ResultWS<T> = std::result::Result<T, Rejection>;
 
-
 #[derive(Debug, Clone)]
 pub struct WSClient {
-    pub client_id: String,
-    pub sender: Option<mpsc::UnboundedSender<std::result::Result<warp::ws::Message, warp::Error>>>,
+    pub sender: mpsc::UnboundedSender<std::result::Result<warp::ws::Message, warp::Error>>,
 }
-
 
 type WSClientsMap = HashMap<String, WSClient>;
 
-#[derive(Clone, Debug)]
 pub struct AppState {
     pub name: String,
-    pub counter: u64,
     pub ws_clients: WSClientsMap,
-    // O tutaj mapa userow, Appstate wchodzi zawsze do endpointa z ktorego mozna bedzie striggerowac wysłanie
+    pub routing_map: Arc<Router>,
+}
+
+impl AppState {
+    fn new() -> Arc<Mutex<AppState>> {
+        Arc::new(Mutex::new(AppState {
+            name: "Pre-websocket server".to_string(),
+            ws_clients: WSClientsMap::new(),
+            routing_map: {
+                let mut router: Router = Router::new();
+                // Register endpoints under the router
+                router.get("/test", Box::new(handler::test_handler));
+                router.post("/post", Box::new(handler::send_handler));
+                Arc::new(router)
+            },
+        }))
+    }
 }
 
 #[tokio::main]
 async fn main() {
+    let app = AppState::new();
 
-	let app = Arc::new(Mutex::new(AppState {
-	    name: "Pre websocket server".to_string(),
-	    counter: 0,
-	    ws_clients: HashMap::new(),
-	}));
+    let http = tokio::spawn(run_http(app.clone()));
+    let ws = tokio::spawn(run_ws(app.clone()));
 
-	let http = tokio::spawn(run_http(app.clone()));
-	let ws   = tokio::spawn(run_ws(app.clone()));
-
-	let _ = ws.await;
-	let _ = http.await;
+    ws.await.expect("WS server died!");
+    http.await.expect("HTTP server died!");
 }
 
-async fn run_ws(app: Arc<Mutex<AppState>>){
-	println!("Preparing WS...");
+async fn run_ws(app: Arc<Mutex<AppState>>) {
+    println!("Preparing WS...");
 
-        let ws_route = warp::path("ws")
-            .and(warp::ws())
-            .and(with_clients(app.clone()))
-            .and_then(handler::ws_handler);
+    let ws_route = warp::path("ws")
+        .and(warp::ws())
+        .and(with_clients(app.clone()))
+        .and_then(handler::ws_handler);
 
-        let routes = ws_route.with(warp::cors().allow_any_origin());
-        println!("WS open on 127.0.0.1:8000/ws ...");
-        warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
+    let routes = ws_route.with(warp::cors().allow_any_origin());
+    println!("WS open on {} ...", "http://127.0.0.1:8080/ws");
+    warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
 }
 
-fn with_clients(clients: Arc<Mutex<AppState>>) -> impl Filter<Extract = (Arc<Mutex<AppState>>,), Error = Infallible> + Clone {
+fn with_clients(
+    clients: Arc<Mutex<AppState>>,
+) -> impl Filter<Extract = (Arc<Mutex<AppState>>,), Error = Infallible> + Clone {
     warp::any().map(move || clients.clone())
 }
 
-
-async fn run_http(app: Arc<Mutex<AppState>>){
-    
+async fn run_http(app: Arc<Mutex<AppState>>) {
     println!("Preparing HTTP...");
+
     let new_service = make_service_fn(move |_| {
-
-	let app_capture = app.clone();
-
+        let app_capture = app.clone();
         async {
-            Ok::<_, Error>(service_fn(move |req| {
-                route(make_routing_map(), req, app_capture.clone())
+            Ok::<_, Error>(service_fn(move |req| { //TODO: what's this mysterious syntax?
+                let router = app_capture.deref().lock().unwrap().routing_map.clone();
+                route_and_handle(router, req, app_capture.clone())
             }))
         }
     });
 
-    let addr = "127.0.0.1:8080".parse().expect("address creation works");
+    let addr = "127.0.0.1:8080".parse::<SocketAddr>().expect("http address creation failed");
     let server = Server::bind(&addr).serve(new_service);
     println!("HTTP open on {}", addr);
     let _ = server.await;
 }
 
-fn make_routing_map() -> Arc<Router>
-{
-    // Register endpoints
-    let mut router: Router = Router::new();
-    router.get("/test",  Box::new(handler::test_handler));
-    router.post("/post", Box::new(handler::send_handler));
-
-
-    return Arc::new(router);
-}
-
-
-
-async fn route(router: Arc<Router>, req: Request<hyper::Body>,app_state: Arc<Mutex<AppState>>) -> Result<Response, Error> {
-
-    let found_handler = router.route(req.uri().path(), req.method());
+async fn route_and_handle(
+    router: Arc<Router>,
+    req_body: Request<hyper::Body>,
+    app_state: Arc<Mutex<AppState>>,
+) -> Result<Response, Error> {
+    let found_handler = router.route(req_body.uri().path(), req_body.method());
     let resp = found_handler
         .handler
-        .invoke(Context::new(app_state, req, found_handler.params))
+        .invoke(Context::new(app_state, req_body, found_handler.params))
         .await;
     Ok(resp)
 }
 
-#[derive(Debug)]
 pub struct Context {
     pub state: Arc<Mutex<AppState>>,
     pub req: Request<Body>,
     pub params: Params,
     body_bytes: Option<hyper::body::Bytes>,
 }
-
 
 impl Context {
     pub fn new(state: Arc<Mutex<AppState>>, req: Request<Body>, params: Params) -> Context {
@@ -144,6 +138,6 @@ impl Context {
                 self.body_bytes.as_ref().expect("body_bytes was set above")
             }
         };
-        Ok(serde_json::from_slice(&body_bytes)?)
+        Ok(serde_json::from_slice(body_bytes)?)
     }
 }

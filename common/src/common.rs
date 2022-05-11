@@ -1,31 +1,26 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
-use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::{DateTime, Utc};
 
 #[derive(Serialize, Deserialize)]
-pub struct Message {
+pub struct ChatMessage {
     pub author: String,
     pub contents: String,
-    pub timestamp: u64,
+    pub timestamp: DateTime<Utc>,
 }
 
-impl Display for Message {
+impl Display for ChatMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({}, {})", 1, 2)
+        write!(f, "[{}] {}: '{}'", self.timestamp, self.author, self.contents)
     }
 }
 
-impl Message {
-    // Used only in client
-    #[allow(dead_code)]
-    pub fn new(author: &str, contents: &str) -> Message {
-        Message {
+impl ChatMessage {
+    pub fn new(author: &str, contents: &str) -> ChatMessage {
+        ChatMessage {
             author: author.to_string(),
             contents: contents.to_string(),
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Clock may have gone backwards")
-                .as_secs(),
+            timestamp: Utc::now()
         }
     }
 }

@@ -11,9 +11,9 @@ pub trait Handler: Send + Sync + 'static {
 }
 
 #[async_trait]
-impl<F: Send + Sync + 'static, Fut> Handler for F
+impl<F, Fut> Handler for F
 where
-    F: Fn(Context) -> Fut,
+    F: Send + Sync + 'static + Fn(Context) -> Fut,
     Fut: Future + Send + 'static,
     Fut::Output: IntoResponse,
 {
@@ -34,10 +34,10 @@ pub struct Router {
 impl Router {
     pub fn new() -> Router {
         Router {
-            method_map: HashMap::default(),
+            method_map: HashMap::new(),
         }
     }
-    
+
     pub fn get(&mut self, path: &str, handler: Box<dyn Handler>) {
         self.method_map
             .entry(Method::GET)
@@ -79,6 +79,7 @@ async fn not_found_handler(_cx: Context) -> Response {
 }
 
 pub trait IntoResponse: Send + Sized {
+    //todo: remove
     fn into_response(self) -> Response;
 }
 
