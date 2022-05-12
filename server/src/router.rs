@@ -79,7 +79,6 @@ async fn not_found_handler(_cx: Context) -> Response {
 }
 
 pub trait IntoResponse: Send + Sized {
-    //todo: remove
     fn into_response(self) -> Response;
 }
 
@@ -89,14 +88,4 @@ impl IntoResponse for Response {
     }
 }
 
-impl IntoResponse for &'static str {
-    fn into_response(self) -> Response {
-        Response::new(self.into())
-    }
-}
 
-impl IntoResponse for String {
-    fn into_response(self) -> Response {
-        Response::new(self.into())
-    }
-}

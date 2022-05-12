@@ -1,4 +1,4 @@
 /target/
 /.idea/
-/server/target/
-/client/target/
+/server/target/*
+/client/target/*

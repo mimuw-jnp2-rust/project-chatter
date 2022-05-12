@@ -11,7 +11,7 @@ pub struct ChatMessage {
 
 impl Display for ChatMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}: '{}'", self.timestamp, self.author, self.contents)
+        write!(f, "[{}] {}: {}", self.timestamp, self.author, self.contents)
     }
 }
 

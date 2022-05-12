@@ -70,7 +70,7 @@ async fn run_ws(app: Arc<Mutex<AppState>>) {
         .and_then(handler::ws_handler);
 
     let routes = ws_route.with(warp::cors().allow_any_origin());
-    println!("WS open on {} ...", "http://127.0.0.1:8080/ws");
+    println!("WS open on {} ...", "127.0.0.1:8000/ws");
     warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
 }
 

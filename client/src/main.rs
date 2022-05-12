@@ -82,9 +82,8 @@ fn sender_start() {
 async fn displayer_start() {
     println!("Starting displayer...");
 
-    let connect_addr = "ws://127.0.0.1:8080/chat";
-    let url = Url::parse(&connect_addr).unwrap();
-    let (mut ws_stream, _) = connect_async(url)
+    let connect_addr = "ws://127.0.0.1:8000/ws";
+    let (mut ws_stream, _) = connect_async(connect_addr)
         .await
         .expect("Failed to connect to the WS server");
 
