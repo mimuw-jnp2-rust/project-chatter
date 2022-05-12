@@ -5,12 +5,19 @@ use crate::{ws, Context, Response, ResultWS};
 use hyper::StatusCode;
 use warp::Reply;
 
+pub async fn not_found_handler(_cx: Context) -> Response {
+    hyper::Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body("404: NOT FOUND".into())
+        .unwrap()
+}
+
 pub async fn test_handler(ctx: Context) -> Response  {
     let app = ctx.state.lock().unwrap();
 
     hyper::Response::builder()
         .status(StatusCode::OK)
-        .body( format!("test called, state_thing was: {}", app.name).into())
+        .body( format!("I am {} and I am alive.", app.name).into())
         .unwrap()
 }
 
@@ -42,6 +49,5 @@ pub async fn send_handler(mut ctx: Context) -> Response {
 }
 
 pub async fn ws_handler(ws: warp::ws::Ws, app: Arc<Mutex<AppState>>) -> ResultWS<impl Reply> {
-    println!("ws_handler");
     Ok(ws.on_upgrade(move |socket| ws::client_connection(socket, app)))
 }
