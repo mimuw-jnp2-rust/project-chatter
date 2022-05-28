@@ -5,19 +5,19 @@ use crate::{ws, Context, Response, ResultWS};
 use hyper::StatusCode;
 use warp::Reply;
 
-pub async fn not_found_handler(_cx: Context) -> Response {
+pub async fn not_found_handler(_ctx: Context) -> Response {
     hyper::Response::builder()
         .status(StatusCode::NOT_FOUND)
         .body("404: NOT FOUND".into())
         .unwrap()
 }
 
-pub async fn test_handler(ctx: Context) -> Response  {
+pub async fn test_handler(ctx: Context) -> Response {
     let app = ctx.state.lock().unwrap();
 
     hyper::Response::builder()
         .status(StatusCode::OK)
-        .body( format!("I am {} and I am alive.", app.name).into())
+        .body(format!("I am {} and I am alive.", app.name).into())
         .unwrap()
 }
 
@@ -25,7 +25,6 @@ pub async fn send_handler(mut ctx: Context) -> Response {
     let received_msg: common::ChatMessage = match ctx.body_json().await {
         Ok(v) => v,
         Err(e) => {
- 
             return hyper::Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .body(format!("could not parse JSON: {}", e).into())
@@ -39,7 +38,7 @@ pub async fn send_handler(mut ctx: Context) -> Response {
 
     for connection in ctx.state.clone().lock().unwrap().ws_clients.values() {
         let splash_msg = Ok(warp::ws::Message::text(sent_str.clone()));
-        let _ = connection.sender.send(splash_msg); //TODO: make this checked
+        connection.sender.send(splash_msg).expect("Sending splash message failed!");
     }
 
     hyper::Response::builder()

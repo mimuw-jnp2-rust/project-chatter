@@ -86,15 +86,18 @@ async fn run_http(app: Arc<Mutex<AppState>>) {
     let new_service = make_service_fn(move |_| {
         let app_capture = app.clone();
         async {
-            Ok::<_, Error>(service_fn(move |req| { //TODO: what's this mysterious syntax?
+            Ok::<_, Error>(service_fn(move |req| {
                 let router = app_capture.deref().lock().unwrap().routing_map.clone();
                 route_and_handle(router, req, app_capture.clone())
             }))
         }
     });
 
-    let addr = "127.0.0.1:8080".parse::<SocketAddr>().expect("http address creation failed");
+    let addr = "127.0.0.1:8080"
+        .parse::<SocketAddr>()
+        .expect("http address creation failed");
     let server = Server::bind(&addr).serve(new_service);
+    
     println!("HTTP open on {}", addr);
     let _ = server.await;
 }

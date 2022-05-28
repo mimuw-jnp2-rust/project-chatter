@@ -18,7 +18,7 @@ pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
     // Keep stream open until disconnected
     tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
         if let Err(ref e) = result {
-            println!("error sending websocket msg: {}", e);
+            eprintln!("error sending websocket msg: {}", e);
         };
         result
     }));
