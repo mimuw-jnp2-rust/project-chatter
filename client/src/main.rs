@@ -1,4 +1,5 @@
 use common::ChatMessage;
+use common::
 use reqwest::{Client, Response};
 use std::io::stdin;
 use tokio::sync::mpsc;
@@ -8,6 +9,11 @@ use tokio::io::AsyncBufReadExt;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::connect_async;
 use tungstenite::protocol::Message as TungsteniteMsg;
+
+fn keepAlive()
+{
+	let data: HeartbeatData; 
+}
 
 /* Gets line from the standard input with a `prompt` and error-checks.*/
 fn get_line(prompt: &str) -> String {

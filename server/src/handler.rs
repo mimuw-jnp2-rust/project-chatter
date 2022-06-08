@@ -47,6 +47,26 @@ pub async fn send_handler(mut ctx: Context) -> Response {
         .unwrap()
 }
 
+pub async fn heartbeat_handler(mut ctx: Context) -> Response {
+    let received_msg: common::HeartbeatData = match ctx.body_json().await {
+        Ok(v) => v,
+        Err(e) => {
+            return hyper::Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(format!("could not parse JSON: {}", e).into())
+                .unwrap();
+        }
+    };
+
+    // Heartbeat handling here
+
+    hyper::Response::builder()
+        .status(StatusCode::OK)
+        .body("OK".into())
+        .unwrap()
+}
+
+
 pub async fn ws_handler(ws: warp::ws::Ws, app: Arc<Mutex<AppState>>) -> ResultWS<impl Reply> {
     Ok(ws.on_upgrade(move |socket| ws::client_connection(socket, app)))
 }

@@ -24,3 +24,15 @@ impl ChatMessage {
         }
     }
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct HeartbeatData {
+    pub aliveUserName: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct EnterConnectionData {
+    pub connectingUserName: String,
+}
+
+
