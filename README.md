@@ -26,14 +26,17 @@
 	Początkowo
 	- Jan: podstawowa komunikacja sieciowa
 	- Kacper: przeniesienie zaimplementowanych mechanizmów przez Jan na kod o wyższej jakości, zgodny z dobrymi praktykami tworzenia oprogramowania w języku Rust
+	
+	Etap 2:
+	- Jan: system heartbeat + indeksowanie klientów WS po username
+	- Kacper: Wiele pokoi + msg storage 
 
-	Dodawanie nowych funkcji zależnie od potrzeb.
 
 ## Podział projektu na części
     Sprint 1
         - wysyłanie i odbieranie podstawowych komunikatów z timestampem,
     Sprint 2
-        - wielowątkowy serwer (wiele pokoi), autentyfikacja, enkrypcja (?, https), blockchain (???)
+        - wiele pokoi, historia wiadomosci, heartbeat, polaczenie "displayera" za pomocaą username
 
 ## Biblioteki i zależności:
 	
@@ -45,10 +48,10 @@
 ## Struktura repo
 	- server - folder z projektem servera
 	- client - folder z projektem clienta
-	- common - wspolny kod dla obu projektow, umieszczony poprzez symlinki w folderach server i client 
-
-	W razie jakby nie dzialalo utworzyc nowe: Otworzyc terminal w folderze clienta/servera, usunac stare i wykonac komende "ln -s ../../common/common.rs"
+	- common - wspolny kod dla obu projektow
 
 ## Uruchomienie
 
-	Uruchomienie clienta jest niestandardowe, nalezy uzyc skryptu client/run_client.sh
+	$ cargo run
+
+	W katalogu odpowiednio dla serwera oraz klienta
