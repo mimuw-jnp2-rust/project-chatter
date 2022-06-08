@@ -44,6 +44,7 @@ impl AppState {
                 // Register endpoints under the router
                 router.get("/test", Box::new(handler::test_handler));
                 router.post("/post", Box::new(handler::send_handler));
+                router.post("/heartbeat", Box::new(handler::heartbeat_handler));
                 Arc::new(router)
             },
         }))

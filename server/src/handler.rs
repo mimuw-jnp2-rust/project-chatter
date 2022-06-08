@@ -57,7 +57,7 @@ pub async fn heartbeat_handler(mut ctx: Context) -> Response {
                 .unwrap();
         }
     };
-
+	println!("BEAT");
     // Heartbeat handling here
 
     hyper::Response::builder()

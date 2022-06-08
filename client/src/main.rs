@@ -1,7 +1,9 @@
 use common::ChatMessage;
-use common::
+use common::HeartbeatData;
 use reqwest::{Client, Response};
 use std::io::stdin;
+use std::{thread, time};
+
 use tokio::sync::mpsc;
 
 use futures::StreamExt;
@@ -10,9 +12,21 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::connect_async;
 use tungstenite::protocol::Message as TungsteniteMsg;
 
-fn keepAlive()
+async fn keepAlive(addr: &str, userName : String)
 {
-	let data: HeartbeatData; 
+	let heartbeatData  = HeartbeatData {aliveUserName:userName}; 
+	loop
+	{
+		println!("BEAT;");
+		thread::sleep(time::Duration::from_millis(2000));
+		
+		let dataStr = serde_json::to_string(&heartbeatData);
+		let resp =  Client::new()
+			.post(addr.to_string() + "/heartbeat")
+			.body(dataStr)
+			.send()
+			.await;
+	}
 }
 
 /* Gets line from the standard input with a `prompt` and error-checks.*/
@@ -20,7 +34,7 @@ fn get_line(prompt: &str) -> String {
     println!("{}", prompt);
     let mut line = String::new();
     stdin().read_line(&mut line).expect("Failed to read line");
-    line.trim().to_string()
+    return line.trim().to_string();
 }
 
 /**
@@ -62,7 +76,9 @@ async fn main() {
 
     let (tx_stdin, rx) = mpsc::channel::<String>(1);
     let mut rx = ReceiverStream::new(rx); // <-- this
-
+    
+    keepAlive("http://0.0.0.0:8080",nickname.clone());
+    
     let stdin_loop = async move {
         loop {
             let mut line = String::new();
