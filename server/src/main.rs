@@ -12,7 +12,7 @@ use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use warp::{Filter, Rejection};
-
+use std::{thread, time};
 mod handler;
 mod router;
 mod ws;
@@ -23,6 +23,7 @@ type ResultWS<T> = std::result::Result<T, Rejection>;
 
 #[derive(Debug, Clone)]
 pub struct WSClient {
+    pub isAlive: bool,
     pub sender: mpsc::UnboundedSender<std::result::Result<warp::ws::Message, warp::Error>>,
 }
 
@@ -57,9 +58,21 @@ async fn main() {
 
     let http = tokio::spawn(run_http(app.clone()));
     let ws = tokio::spawn(run_ws(app.clone()));
+    let heartbeat = tokio::spawn(run_heartbeat_service(app.clone()));
 
+    heartbeat.await.expect("Heartbeat service died!");
     ws.await.expect("WS server died!");
     http.await.expect("HTTP server died!");
+}
+
+async fn run_heartbeat_service(app: Arc<Mutex<AppState>>)
+{
+    loop{
+	thread::sleep(time::Duration::from_millis(5000));
+	
+	
+	println!("All Clients are alive.");
+    }
 }
 
 async fn run_ws(app: Arc<Mutex<AppState>>) {

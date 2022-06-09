@@ -23,7 +23,8 @@ pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
         result
     }));
 
-    let new_client = WSClient {
+    let mut new_client = WSClient {
+	isAlive: true,
         sender: client_sender,
     };
 

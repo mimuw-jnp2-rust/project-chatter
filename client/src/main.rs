@@ -16,16 +16,16 @@ async fn keepAlive(addr: &str, userName : String)
 {
 	let heartbeatData  = HeartbeatData {aliveUserName:userName}; 
 	loop
-	{
-		println!("BEAT;");
-		thread::sleep(time::Duration::from_millis(2000));
-		
-		let dataStr = serde_json::to_string(&heartbeatData);
+	{	
+		let dataStr = serde_json::to_string(&heartbeatData).expect("Parsing failed");
 		let resp =  Client::new()
 			.post(addr.to_string() + "/heartbeat")
 			.body(dataStr)
 			.send()
-			.await;
+			.await
+			.expect("Reqwest failed");
+
+		thread::sleep(time::Duration::from_millis(2000));
 	}
 }
 
@@ -68,6 +68,7 @@ async fn main() {
     let nickname = get_line("Enter a nickname:");
     println!("Your nickname is {}\n", &nickname);
 
+
     let connect_addr = "ws://127.0.0.1:8000/ws";
     let (mut ws_stream, _) = connect_async(connect_addr)
         .await
@@ -77,7 +78,7 @@ async fn main() {
     let (tx_stdin, rx) = mpsc::channel::<String>(1);
     let mut rx = ReceiverStream::new(rx); // <-- this
     
-    keepAlive("http://0.0.0.0:8080",nickname.clone());
+
     
     let stdin_loop = async move {
         loop {
@@ -93,6 +94,7 @@ async fn main() {
         }
     };
     tokio::task::spawn(stdin_loop);
+    tokio::task::spawn(keepAlive("http://0.0.0.0:8080",nickname.clone()));
 
     loop {
         tokio::select! {

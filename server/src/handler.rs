@@ -48,7 +48,7 @@ pub async fn send_handler(mut ctx: Context) -> Response {
 }
 
 pub async fn heartbeat_handler(mut ctx: Context) -> Response {
-    let received_msg: common::HeartbeatData = match ctx.body_json().await {
+    let received_heartbeat: common::HeartbeatData = match ctx.body_json().await {
         Ok(v) => v,
         Err(e) => {
             return hyper::Response::builder()
@@ -57,8 +57,19 @@ pub async fn heartbeat_handler(mut ctx: Context) -> Response {
                 .unwrap();
         }
     };
-	println!("BEAT");
+    println!("BEAT from {}", received_heartbeat.aliveUserName);
     // Heartbeat handling here
+
+ 
+    if !ctx.state.clone().lock().unwrap().ws_clients.contains_key(&received_heartbeat.aliveUserName){
+
+	println!("User {} not found",received_heartbeat.aliveUserName);
+    }
+    else{
+	ctx.state.clone().lock().unwrap().ws_clients.get_mut(&received_heartbeat.aliveUserName).unwrap().isAlive = true;
+    }
+
+	
 
     hyper::Response::builder()
         .status(StatusCode::OK)
