@@ -31,7 +31,7 @@ pub struct HeartbeatData {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct EnterConnectionData {
+pub struct ClientConnectionData {
     pub connectingUserName: String,
 }
 

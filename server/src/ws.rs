@@ -7,11 +7,12 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 use warp::ws::WebSocket;
+use common::ClientConnectionData;
 
 pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
     println!("establishing client connection... {:?}", ws);
 
-    let (client_ws_sender, _) = ws.split();
+    let (client_ws_sender, mut client_ws_rcv) = ws.split();
     let (client_sender, client_rcv) = mpsc::unbounded_channel();
     let client_rcv = UnboundedReceiverStream::new(client_rcv);
 
@@ -23,13 +24,36 @@ pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
         result
     }));
 
-    let mut new_client = WSClient {
+    while let Some(result) = client_ws_rcv.next().await {
+            let msg = match result {
+                Ok(msg) => msg,
+                Err(e) => {
+		    return 
+                }
+         };
+
+	    let jsonStr = match msg.to_str() {
+		Ok(v) => v,
+                Err(e) => {
+		    return 
+                }
+	    };
+
+	let newClientData : ClientConnectionData = serde_json::from_str(jsonStr).expect("");
+
+            let new_client = WSClient {
 	isAlive: true,
         sender: client_sender,
+
     };
 
     app.lock()
         .unwrap()
         .ws_clients
-        .insert(Uuid::new_v4().as_simple().to_string(), new_client);
+        .insert(newClientData.connectingUserName, new_client);
+	return
+    }
+	
+
+
 }

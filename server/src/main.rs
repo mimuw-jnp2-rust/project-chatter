@@ -69,8 +69,24 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>)
 {
     loop{
 	thread::sleep(time::Duration::from_millis(5000));
-	
-	
+
+
+	let clientsMap = & mut app.as_ref().lock().unwrap().ws_clients;
+
+
+	for connection in clientsMap.iter_mut() {
+
+            let (user_name,client_ref) = connection;
+
+            if client_ref.isAlive == true 
+	    {
+                client_ref.isAlive = true; // TODO: change to false
+            }
+	    else
+	    {
+		//clientsMap.remove(user_name);
+            }
+        }
 	println!("All Clients are alive.");
     }
 }
