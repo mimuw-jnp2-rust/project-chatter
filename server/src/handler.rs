@@ -37,6 +37,8 @@ pub async fn send_handler(mut ctx: Context) -> Response {
     let sent_str = serde_json::to_string(&received_msg).unwrap();
 
     for connection in ctx.state.clone().lock().unwrap().ws_clients.values() {
+    
+    	
         let splash_msg = Ok(warp::ws::Message::text(sent_str.clone()));
         connection.sender.send(splash_msg).expect("Sending splash message failed!");
     }

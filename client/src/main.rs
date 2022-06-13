@@ -1,5 +1,6 @@
 use common::ChatMessage;
 use common::HeartbeatData;
+use common::ClientConnectionData;
 use reqwest::{Client, Response};
 use std::io::stdin;
 use std::{thread, time};
@@ -11,6 +12,8 @@ use tokio::io::AsyncBufReadExt;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::connect_async;
 use tungstenite::protocol::Message as TungsteniteMsg;
+use futures::SinkExt;
+
 
 async fn keepAlive(addr: &str, userName : String)
 {
@@ -78,7 +81,7 @@ async fn main() {
     let (tx_stdin, rx) = mpsc::channel::<String>(1);
     let mut rx = ReceiverStream::new(rx); // <-- this
     
-
+    let userData = ClientConnectionData {connectingUserName:String::from(&nickname)}; 
     
     let stdin_loop = async move {
         loop {
@@ -96,12 +99,17 @@ async fn main() {
     tokio::task::spawn(stdin_loop);
     tokio::task::spawn(keepAlive("http://0.0.0.0:8080",nickname.clone()));
 
+    
+
+    ws_stream.send(TungsteniteMsg::Text(serde_json::to_string(&userData).unwrap())).await;
+
     loop {
         tokio::select! {
             ws_msg = ws_stream.next() => {
                 match ws_msg {
                     Some(msg) => match msg {
                         Ok(msg) => match msg {
+                            // Tu mozna zmienic na from_str() poprostu
                             TungsteniteMsg::Text(json_str) => {
                                 let msg = serde_json::from_slice::<ChatMessage>(json_str.as_bytes()).unwrap();
                                 println!("{}", msg);

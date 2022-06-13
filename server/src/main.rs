@@ -70,24 +70,30 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>)
     loop{
 	thread::sleep(time::Duration::from_millis(5000));
 
+	// Ten caly szrot mozna zalatwic jedna linijka jesli istnieje funkcja cos jak map.remove_if(lambda)
 
 	let clientsMap = & mut app.as_ref().lock().unwrap().ws_clients;
-
+	// let mut usersToRemove = clientsMap.into_iter().filter(|&(_, v)| client_ref.isAlive == false).collect();
+	
+	
+	let mut usersToRemove = Vec::new();
 
 	for connection in clientsMap.iter_mut() {
 
             let (user_name,client_ref) = connection;
 
-            if client_ref.isAlive == true 
-	    {
-                client_ref.isAlive = true; // TODO: change to false
+            if client_ref.isAlive == true {
+                client_ref.isAlive = false; 
             }
-	    else
-	    {
-		//clientsMap.remove(user_name);
+	        else {
+		        usersToRemove.push(String::from(user_name));
             }
         }
-	println!("All Clients are alive.");
+        
+        for userNameToRemove in usersToRemove {
+            println!("User {} disconected",&userNameToRemove);
+            clientsMap.remove(&userNameToRemove);
+        }
     }
 }
 
