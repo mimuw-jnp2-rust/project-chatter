@@ -38,14 +38,14 @@ pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
 	    let new_client_data : ClientConnectionData = serde_json::from_str(json_str).expect("");
 
         let new_client = WSClient {
-	        isAlive: true,
+	        is_alive: true,
             sender: client_sender,
         };
 
         app.lock()
             .unwrap()
             .ws_clients
-            .insert(new_client_data.connectingUserName, new_client);
+            .insert(new_client_data.connecting_user_name, new_client);
 
         return
     }

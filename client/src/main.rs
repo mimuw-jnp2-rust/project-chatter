@@ -15,19 +15,23 @@ use tungstenite::protocol::Message as TungsteniteMsg;
 use futures::SinkExt;
 
 
-async fn keepAlive(addr: &str, userName : String)
+async fn keep_alive(addr: &str, user_name : String)
 {
-	let heartbeatData  = HeartbeatData {aliveUserName:userName}; 
+	let heartbeat_data  = HeartbeatData {alive_user_name:user_name}; 
 	loop
 	{	
-		let dataStr = serde_json::to_string(&heartbeatData).expect("Parsing failed");
-		let resp =  Client::new()
+		let data_str = serde_json::to_string(&heartbeat_data).expect("Parsing failed");
+		
+        // TODO: info on status != 200
+        let _resp =  Client::new()
 			.post(addr.to_string() + "/heartbeat")
-			.body(dataStr)
+			.body(data_str)
 			.send()
 			.await
 			.expect("Reqwest failed");
 
+
+        
 		thread::sleep(time::Duration::from_millis(2000));
 	}
 }
@@ -81,8 +85,7 @@ async fn main() {
     let (tx_stdin, rx) = mpsc::channel::<String>(1);
     let mut rx = ReceiverStream::new(rx); // <-- this
     
-    let userData = ClientConnectionData {connectingUserName:String::from(&nickname)}; 
-    
+
     let stdin_loop = async move {
         loop {
             let mut line = String::new();
@@ -97,11 +100,12 @@ async fn main() {
         }
     };
     tokio::task::spawn(stdin_loop);
-    tokio::task::spawn(keepAlive("http://0.0.0.0:8080",nickname.clone()));
+    tokio::task::spawn(keep_alive("http://0.0.0.0:8080",nickname.clone()));
 
     
-
-    ws_stream.send(TungsteniteMsg::Text(serde_json::to_string(&userData).unwrap())).await;
+    let user_data = ClientConnectionData {connecting_user_name:String::from(&nickname)}; 
+    
+    let _ = ws_stream.send(TungsteniteMsg::Text(serde_json::to_string(&user_data).unwrap())).await;
 
     loop {
         tokio::select! {

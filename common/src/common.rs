@@ -27,12 +27,12 @@ impl ChatMessage {
 
 #[derive(Serialize, Deserialize)]
 pub struct HeartbeatData {
-    pub aliveUserName: String,
+    pub alive_user_name: String,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct ClientConnectionData {
-    pub connectingUserName: String,
+    pub connecting_user_name: String,
 }
 
 

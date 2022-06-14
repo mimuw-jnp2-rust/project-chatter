@@ -23,7 +23,7 @@ type ResultWS<T> = std::result::Result<T, Rejection>;
 
 #[derive(Debug, Clone)]
 pub struct WSClient {
-    pub isAlive: bool,
+    pub is_alive: bool,
     pub sender: mpsc::UnboundedSender<std::result::Result<warp::ws::Message, warp::Error>>,
 }
 
@@ -95,9 +95,9 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>)
 
         conn.ws_clients.retain(|name, v| {
 
-            if v.isAlive {
+            if v.is_alive {
 
-                v.isAlive = false;
+                v.is_alive = false;
                 return true;
             }
 

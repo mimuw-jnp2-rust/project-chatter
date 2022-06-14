@@ -54,15 +54,15 @@ pub async fn heartbeat_handler(mut ctx: Context) -> Response {
                 .unwrap();
         }
     };
-    println!("BEAT from {}", received_heartbeat.aliveUserName);
+    println!("BEAT from {}", received_heartbeat.alive_user_name);
  
-    if !ctx.state.clone().lock().unwrap().ws_clients.contains_key(&received_heartbeat.aliveUserName){
+    if !ctx.state.clone().lock().unwrap().ws_clients.contains_key(&received_heartbeat.alive_user_name){
 
-	    println!("User {} not found",received_heartbeat.aliveUserName);
+	    println!("User {} not found",received_heartbeat.alive_user_name);
     }
     else{
 
-	    ctx.state.clone().lock().unwrap().ws_clients.get_mut(&received_heartbeat.aliveUserName).unwrap().isAlive = true;
+	    ctx.state.clone().lock().unwrap().ws_clients.get_mut(&received_heartbeat.alive_user_name).unwrap().is_alive = true;
     }
 
 	
