@@ -36,12 +36,7 @@ pub async fn send_handler(mut ctx: Context) -> Response {
 
     let sent_str = serde_json::to_string(&received_msg).unwrap();
 
-    for connection in ctx.state.clone().lock().unwrap().ws_clients.values() {
-    
-    	
-        let splash_msg = Ok(warp::ws::Message::text(sent_str.clone()));
-        connection.sender.send(splash_msg).expect("Sending splash message failed!");
-    }
+    ctx.state.clone().lock().unwrap().send_to_all(&sent_str);
 
     hyper::Response::builder()
         .status(StatusCode::OK)
@@ -60,15 +55,14 @@ pub async fn heartbeat_handler(mut ctx: Context) -> Response {
         }
     };
     println!("BEAT from {}", received_heartbeat.aliveUserName);
-    // Heartbeat handling here
-
  
     if !ctx.state.clone().lock().unwrap().ws_clients.contains_key(&received_heartbeat.aliveUserName){
 
-	println!("User {} not found",received_heartbeat.aliveUserName);
+	    println!("User {} not found",received_heartbeat.aliveUserName);
     }
     else{
-	ctx.state.clone().lock().unwrap().ws_clients.get_mut(&received_heartbeat.aliveUserName).unwrap().isAlive = true;
+
+	    ctx.state.clone().lock().unwrap().ws_clients.get_mut(&received_heartbeat.aliveUserName).unwrap().isAlive = true;
     }
 
 	

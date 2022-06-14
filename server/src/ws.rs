@@ -5,7 +5,6 @@ use crate::WSClient;
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use uuid::Uuid;
 use warp::ws::WebSocket;
 use common::ClientConnectionData;
 
@@ -21,37 +20,34 @@ pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
         if let Err(ref e) = result {
             eprintln!("error sending websocket msg: {}", e);
         };
-        result
+        return result
     }));
 
     while let Some(result) = client_ws_rcv.next().await {
-            let msg = match result {
-                Ok(msg) => msg,
-                Err(e) => {
-		    return 
-                }
+
+        let msg = match result {
+            Ok(msg) => msg,
+            Err(_) => return
          };
 
-	    let jsonStr = match msg.to_str() {
-		Ok(v) => v,
-                Err(e) => {
-		    return 
-                }
+	    let json_str = match msg.to_str() {
+		    Ok(v) => v,
+            Err(_) => return
 	    };
 
-	let newClientData : ClientConnectionData = serde_json::from_str(jsonStr).expect("");
+	    let new_client_data : ClientConnectionData = serde_json::from_str(json_str).expect("");
 
-            let new_client = WSClient {
-	isAlive: true,
-        sender: client_sender,
+        let new_client = WSClient {
+	        isAlive: true,
+            sender: client_sender,
+        };
 
-    };
+        app.lock()
+            .unwrap()
+            .ws_clients
+            .insert(new_client_data.connectingUserName, new_client);
 
-    app.lock()
-        .unwrap()
-        .ws_clients
-        .insert(newClientData.connectingUserName, new_client);
-	return
+        return
     }
 	
 

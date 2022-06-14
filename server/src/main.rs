@@ -50,6 +50,21 @@ impl AppState {
             },
         }))
     }
+    pub fn send_to_all(& mut self, msg : &String) {
+
+        for connection in self.ws_clients.values() {
+    	
+            let splash_msg = Ok(warp::ws::Message::text(msg.clone()));
+
+            connection.sender.send(splash_msg)
+                .expect("Sending splash message failed!");
+        }
+    }
+    pub fn send_to_room(& mut self, _msg : &String, _room : &String) {
+
+        todo!("Ty juz wiesz");
+
+    }
 }
 
 #[tokio::main]
@@ -67,33 +82,32 @@ async fn main() {
 
 async fn run_heartbeat_service(app: Arc<Mutex<AppState>>)
 {
+    println!("Heartbeat service running");
+
     loop{
-	thread::sleep(time::Duration::from_millis(5000));
 
-	// Ten caly szrot mozna zalatwic jedna linijka jesli istnieje funkcja cos jak map.remove_if(lambda)
+        thread::sleep(time::Duration::from_millis(5000));
 
-	let clientsMap = & mut app.as_ref().lock().unwrap().ws_clients;
-	// let mut usersToRemove = clientsMap.into_iter().filter(|&(_, v)| client_ref.isAlive == false).collect();
-	
-	
-	let mut usersToRemove = Vec::new();
+        let mut conn = app.as_ref()
+            .lock()
+            .unwrap();
 
-	for connection in clientsMap.iter_mut() {
 
-            let (user_name,client_ref) = connection;
+        conn.ws_clients.retain(|name, v| {
 
-            if client_ref.isAlive == true {
-                client_ref.isAlive = false; 
+            if v.isAlive {
+
+                v.isAlive = false;
+                return true;
             }
-	        else {
-		        usersToRemove.push(String::from(user_name));
-            }
-        }
-        
-        for userNameToRemove in usersToRemove {
-            println!("User {} disconected",&userNameToRemove);
-            clientsMap.remove(&userNameToRemove);
-        }
+
+            // TODO: send_to_all("{name} left the chat");
+            let _msg = common::ChatMessage::new("Server",name);
+            
+            println!("{} left the chat",name);
+
+            return false;
+        });
     }
 }
 
@@ -106,7 +120,7 @@ async fn run_ws(app: Arc<Mutex<AppState>>) {
         .and_then(handler::ws_handler);
 
     let routes = ws_route.with(warp::cors().allow_any_origin());
-    println!("WS open on {} ...", "127.0.0.1:8000/ws");
+    println!("WS open on {}", "127.0.0.1:8000/ws");
     warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
 }
 
@@ -179,4 +193,5 @@ impl Context {
         };
         Ok(serde_json::from_slice(body_bytes)?)
     }
+
 }
