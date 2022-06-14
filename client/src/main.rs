@@ -65,22 +65,21 @@ fn greeting() {
     println!("=   Welcome to Chatter   =");
     println!("==========================");
     println!();
-    println!("Press CTRL + C to exit.");
-    println!();
 }
 
 #[tokio::main]
 async fn main() {
     greeting();
     let nickname = get_line("Enter a nickname:");
-    println!("Your nickname is {}\n", &nickname);
+    println!("Your nickname is \"{}\"", &nickname);
 
 
     let connect_addr = "ws://127.0.0.1:8000/ws";
     let (mut ws_stream, _) = connect_async(connect_addr)
         .await
         .expect("Failed to connect to the WS server");
-    println!("WS server handshake established");
+
+    println!("Connected!");
 
     let (tx_stdin, rx) = mpsc::channel::<String>(1);
     let mut rx = ReceiverStream::new(rx); // <-- this
@@ -90,13 +89,9 @@ async fn main() {
         loop {
             let mut line = String::new();
             let mut buf_stdin = tokio::io::BufReader::new(tokio::io::stdin());
-            //println!("Enter a message:");
 
             buf_stdin.read_line(&mut line).await.unwrap();
             tx_stdin.send(line.trim().to_string()).await.unwrap();
-            if line.trim() == "/exit" {
-                break;
-            }
         }
     };
     tokio::task::spawn(stdin_loop);
@@ -109,13 +104,21 @@ async fn main() {
 
     loop {
         tokio::select! {
+
+            // TODO: ogarnac to
             ws_msg = ws_stream.next() => {
                 match ws_msg {
                     Some(msg) => match msg {
                         Ok(msg) => match msg {
                             // Tu mozna zmienic na from_str() poprostu
                             TungsteniteMsg::Text(json_str) => {
-                                let msg = serde_json::from_slice::<ChatMessage>(json_str.as_bytes()).unwrap();
+                                let mut msg = serde_json::from_slice::<ChatMessage>(json_str.as_bytes()).unwrap();
+
+                                if msg.author == nickname {
+                                    
+                                    msg.author = String::from("YOU");
+                                }
+
                                 println!("{}", msg);
                             }
                             _ => {eprintln!("Received an invalid type of message");}
@@ -128,6 +131,7 @@ async fn main() {
             stdin_msg = rx.next() => {
                 match stdin_msg {
                     Some(msg) => {
+
                         let msg = common::ChatMessage::new(&nickname, &msg);
                         let response = send_msg("http://0.0.0.0:8080", msg).await;
 
