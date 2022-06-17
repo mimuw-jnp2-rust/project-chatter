@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 pub struct ChatMessage {
     pub author: String,
     pub contents: String,
+    pub room: String,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -16,10 +17,11 @@ impl Display for ChatMessage {
 }
 
 impl ChatMessage {
-    pub fn new(author: &str, contents: &str) -> ChatMessage {
+    pub fn new(author: &str, contents: &str, room: &Room) -> ChatMessage {
         ChatMessage {
             author: author.to_string(),
             contents: contents.to_string(),
+            room: room.name.clone(),
             timestamp: Utc::now()
         }
     }
@@ -33,6 +35,12 @@ pub struct HeartbeatData {
 #[derive(Serialize, Deserialize)]
 pub struct ClientConnectionData {
     pub connecting_user_name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Room {
+    pub name: String,
+    pub members: Vec<String>,
 }
 
 

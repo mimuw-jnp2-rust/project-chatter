@@ -17,7 +17,7 @@ pub async fn test_handler(ctx: Context) -> Response {
 
     hyper::Response::builder()
         .status(StatusCode::OK)
-        .body(format!("I am {} and I am alive.", app.name).into())
+        .body(format!("I am {} and I am alive!", app.name).into())
         .unwrap()
 }
 
@@ -33,9 +33,7 @@ pub async fn send_handler(mut ctx: Context) -> Response {
     };
 
     println!("{}", received_msg);
-
     let sent_str = serde_json::to_string(&received_msg).unwrap();
-
     ctx.state.clone().lock().unwrap().send_to_all(&sent_str);
 
     hyper::Response::builder()
@@ -54,25 +52,31 @@ pub async fn heartbeat_handler(mut ctx: Context) -> Response {
                 .unwrap();
         }
     };
+
     println!("BEAT from {}", received_heartbeat.alive_user_name);
- 
-    if !ctx.state.clone().lock().unwrap().ws_clients.contains_key(&received_heartbeat.alive_user_name){
 
-	    println!("User {} not found",received_heartbeat.alive_user_name);
+    let ctx = ctx.state.clone();
+    if !ctx
+        .lock()
+        .unwrap()
+        .clients_map
+        .contains_key(&received_heartbeat.alive_user_name)
+    {
+        println!("User {} not found", received_heartbeat.alive_user_name);
+    } else {
+        ctx.lock()
+            .unwrap()
+            .clients_map
+            .get_mut(&received_heartbeat.alive_user_name)
+            .unwrap()
+            .is_alive = true;
     }
-    else{
-
-	    ctx.state.clone().lock().unwrap().ws_clients.get_mut(&received_heartbeat.alive_user_name).unwrap().is_alive = true;
-    }
-
-	
 
     hyper::Response::builder()
         .status(StatusCode::OK)
         .body("OK".into())
         .unwrap()
 }
-
 
 pub async fn ws_handler(ws: warp::ws::Ws, app: Arc<Mutex<AppState>>) -> ResultWS<impl Reply> {
     Ok(ws.on_upgrade(move |socket| ws::client_connection(socket, app)))
