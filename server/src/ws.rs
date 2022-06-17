@@ -1,12 +1,13 @@
-use crate::AppState;
-use crate::Arc;
-use crate::Mutex;
-use crate::WSClient;
 use common::ClientConnectionData;
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::ws::WebSocket;
+
+use crate::AppState;
+use crate::Arc;
+use crate::Mutex;
+use crate::WSClient;
 
 pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
     println!("establishing client connection... {:?}", ws);
@@ -42,7 +43,7 @@ pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
         app.lock()
             .unwrap()
             .clients_map
-            .insert(new_client_data.connecting_user_name, new_client);
+            .insert(new_client_data.client_uuid, new_client);
 
         return;
     }

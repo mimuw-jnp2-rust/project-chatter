@@ -1,9 +1,10 @@
+use hyper::StatusCode;
+use warp::Reply;
+
+use crate::{Context, Response, ResultWS, ws};
 use crate::AppState;
 use crate::Arc;
 use crate::Mutex;
-use crate::{ws, Context, Response, ResultWS};
-use hyper::StatusCode;
-use warp::Reply;
 
 pub async fn not_found_handler(_ctx: Context) -> Response {
     hyper::Response::builder()
@@ -33,8 +34,7 @@ pub async fn send_handler(mut ctx: Context) -> Response {
     };
 
     println!("{}", received_msg);
-    let sent_str = serde_json::to_string(&received_msg).unwrap();
-    ctx.state.clone().lock().unwrap().send_to_all(&sent_str);
+    ctx.state.clone().lock().unwrap().send_within_room(&received_msg);
 
     hyper::Response::builder()
         .status(StatusCode::OK)
@@ -53,21 +53,20 @@ pub async fn heartbeat_handler(mut ctx: Context) -> Response {
         }
     };
 
-    println!("BEAT from {}", received_heartbeat.alive_user_name);
-
     let ctx = ctx.state.clone();
+
     if !ctx
         .lock()
         .unwrap()
         .clients_map
-        .contains_key(&received_heartbeat.alive_user_name)
+        .contains_key(&received_heartbeat.client_uuid)
     {
-        println!("User {} not found", received_heartbeat.alive_user_name);
+        eprintln!("User with uuid {} not found", received_heartbeat.client_uuid);
     } else {
         ctx.lock()
             .unwrap()
             .clients_map
-            .get_mut(&received_heartbeat.alive_user_name)
+            .get_mut(&received_heartbeat.client_uuid)
             .unwrap()
             .is_alive = true;
     }

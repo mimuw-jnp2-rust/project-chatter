@@ -1,39 +1,32 @@
-use common::ChatMessage;
-use common::HeartbeatData;
-use common::ClientConnectionData;
-use reqwest::{Client, Response};
-use std::io::stdin;
 use std::{thread, time};
+use std::io::stdin;
 
-use tokio::sync::mpsc;
-
-use futures::StreamExt;
+use common::{ChatMessage, ClientConnectionData, HeartbeatData};
+use futures::{SinkExt, StreamExt};
+use reqwest::{Client, Response};
 use tokio::io::AsyncBufReadExt;
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::connect_async;
 use tungstenite::protocol::Message as TungsteniteMsg;
-use futures::SinkExt;
+use uuid::Uuid;
 
+async fn keep_alive(addr: &str, username: &str) {
+    const HEARTBEAT_TIMEOUT: u64 = 2000;
+    let heartbeat_data = HeartbeatData::new(username);
+    loop {
+        thread::sleep(time::Duration::from_millis(HEARTBEAT_TIMEOUT));
 
-async fn keep_alive(addr: &str, user_name : String)
-{
-	let heartbeat_data  = HeartbeatData {alive_user_name:user_name}; 
-	loop
-	{	
-		let data_str = serde_json::to_string(&heartbeat_data).expect("Parsing failed");
-		
+        let data_str = serde_json::to_string(&heartbeat_data).expect("Parsing heartbeat failed");
+
         // TODO: info on status != 200
-        let _resp =  Client::new()
-			.post(addr.to_string() + "/heartbeat")
-			.body(data_str)
-			.send()
-			.await
-			.expect("Reqwest failed");
-
-
-        
-		thread::sleep(time::Duration::from_millis(2000));
-	}
+        let _resp = Client::new()
+            .post(addr.to_string() + "/heartbeat")
+            .body(data_str)
+            .send()
+            .await
+            .expect("Reqwest failed");
+    }
 }
 
 /* Gets line from the standard input with a `prompt` and error-checks.*/
@@ -70,9 +63,8 @@ fn greeting() {
 #[tokio::main]
 async fn main() {
     greeting();
-    let nickname = get_line("Enter a nickname:");
-    println!("Your nickname is \"{}\"", &nickname);
-
+    let username = get_line("Enter a username:");
+    println!("Your username is \"{}\"", &username);
 
     let connect_addr = "ws://127.0.0.1:8000/ws";
     let (mut ws_stream, _) = connect_async(connect_addr)
@@ -82,8 +74,7 @@ async fn main() {
     println!("Connected!");
 
     let (tx_stdin, rx) = mpsc::channel::<String>(1);
-    let mut rx = ReceiverStream::new(rx); // <-- this
-    
+    let mut rx = ReceiverStream::new(rx);
 
     let stdin_loop = async move {
         loop {
@@ -95,17 +86,18 @@ async fn main() {
         }
     };
     tokio::task::spawn(stdin_loop);
-    tokio::task::spawn(keep_alive("http://0.0.0.0:8080",nickname.clone()));
+    tokio::task::spawn(keep_alive("http://0.0.0.0:8080", &username));
 
-    
-    let user_data = ClientConnectionData {connecting_user_name:String::from(&nickname)}; 
-    
-    let _ = ws_stream.send(TungsteniteMsg::Text(serde_json::to_string(&user_data).unwrap())).await;
+    let user_data = ClientConnectionData::new(&*username);
+
+    let _ = ws_stream
+        .send(TungsteniteMsg::Text(
+            serde_json::to_string(&user_data).unwrap(),
+        ))
+        .await;
 
     loop {
         tokio::select! {
-
-            // TODO: ogarnac to
             ws_msg = ws_stream.next() => {
                 match ws_msg {
                     Some(msg) => match msg {
@@ -114,8 +106,8 @@ async fn main() {
                             TungsteniteMsg::Text(json_str) => {
                                 let mut msg = serde_json::from_slice::<ChatMessage>(json_str.as_bytes()).unwrap();
 
-                                if msg.author == nickname {
-                                    
+                                if msg.author == username {
+
                                     msg.author = String::from("YOU");
                                 }
 
@@ -131,8 +123,7 @@ async fn main() {
             stdin_msg = rx.next() => {
                 match stdin_msg {
                     Some(msg) => {
-
-                        let msg = common::ChatMessage::new(&nickname, &msg);
+                        let msg = common::ChatMessage::new(&username, &msg, 1);
                         let response = send_msg("http://0.0.0.0:8080", msg).await;
 
                         // Print err on send failure -> fails only on request fail, does not read the response!

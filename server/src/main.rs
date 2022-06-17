@@ -1,20 +1,22 @@
-use hyper::{
-    body::to_bytes,
-    service::{make_service_fn, service_fn},
-    Body, Request, Server,
-};
-
-use common::Room;
-use route_recognizer::Params;
-use router::Router;
+use std::{thread, time};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
-use std::{thread, time};
+
+use common::{ChatMessage, Room};
+use hyper::{
+    Body,
+    body::to_bytes,
+    Request, Server, service::{make_service_fn, service_fn},
+};
+use route_recognizer::Params;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 use warp::{Filter, Rejection};
+
+use router::Router;
+
 mod handler;
 mod router;
 mod ws;
@@ -29,28 +31,31 @@ pub struct WSClient {
     pub sender: UnboundedSender<Result<warp::ws::Message, warp::Error>>,
 }
 
-type WSClientsMap = HashMap<String, WSClient>;
-type RoomsMap = HashMap<String, Room>;
-type UserNamesMap = HashMap<Uuid, String>; //TODO: use these Uuids whenever they can replace a String
-type RoomNamesMap = HashMap<Uuid, String>; //TODO: as areqUsersMapbove
+type WSClientMap = HashMap<Uuid, WSClient>;
+type RoomMap = HashMap<Uuid, Room>;
+type UserNameMap = HashMap<Uuid, String>;
+type RoomNameMap = HashMap<Uuid, String>;
+type UserRoomMap = HashMap<Uuid, Uuid>;
 
 pub struct AppState {
     pub name: String,
     pub routing_map: Arc<Router>,
-    pub clients_map: WSClientsMap,
-    pub rooms_map: RoomsMap,
-    pub usernames: UserNamesMap,
-    pub room_names: RoomNamesMap,
+    pub clients_map: WSClientMap,
+    pub rooms_map: RoomMap,
+    pub user_names: UserNameMap,
+    pub room_names: RoomNameMap,
+    pub user_rooms: UserRoomMap,
 }
 
 impl AppState {
     fn new() -> Arc<Mutex<AppState>> {
         Arc::new(Mutex::new(AppState {
             name: "Pre-websocket server".to_string(),
-            clients_map: WSClientsMap::new(),
-            rooms_map: RoomsMap::new(),
-            usernames: UserNamesMap::new(),
-            room_names: RoomNamesMap::new(),
+            clients_map: WSClientMap::new(),
+            rooms_map: RoomMap::new(),
+            user_names: UserNameMap::new(),
+            room_names: RoomNameMap::new(),
+            user_rooms: UserRoomMap::new(),
             routing_map: {
                 let mut router: Router = Router::new();
                 // Register endpoints under the router
@@ -61,18 +66,27 @@ impl AppState {
             },
         }))
     }
-    pub fn send_to_all(&mut self, msg: &String) {
-        for connection in self.clients_map.values() {
-            let splash_msg = Ok(warp::ws::Message::text(msg.clone()));
-            connection
+
+    fn send_within_room(&mut self, msg: &ChatMessage) {
+        let msg_json = serde_json::to_string(&msg).unwrap();
+        let room = self.rooms_map.get(&msg.room_uuid).unwrap();
+
+        for user_uuid in &room.members {
+            let msg_for_user = Ok(warp::ws::Message::text(msg_json.clone()));
+            let user_conn = self.clients_map.get(&user_uuid).unwrap();
+            user_conn
                 .sender
-                .send(splash_msg)
-                .expect("Sending splash message failed!");
+                .send(msg_for_user)
+                .expect("Sending message failed!");
         }
     }
-    pub fn send_to_room(&mut self, _msg: &String, _room: &String) {
-        todo!("Ty juz wiesz");
+
+    fn remove_user(&mut self, uuid: &Uuid) {
+        self.clients_map.remove(uuid);
+        //self.user_names.remove(&uuid);
+        //self.user_rooms.remove(&uuid);
     }
+
 }
 
 
@@ -114,9 +128,9 @@ async fn main() {
     let ws = tokio::spawn(run_ws(app.clone()));
     let heartbeat = tokio::spawn(run_heartbeat_service(app.clone()));
 
-    heartbeat.await.expect("Heartbeat service thread died!");
-    ws.await.expect("WS server thread died!");
-    http.await.expect("HTTP server thread died!");
+    heartbeat.await.expect("Heartbeat service died!");
+    ws.await.expect("WS server died!");
+    http.await.expect("HTTP server died!");
 }
 
 async fn route_and_handle(
@@ -133,28 +147,32 @@ async fn route_and_handle(
 }
 
 async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
+    const KILL_TIMEOUT: u64 = 5000;
     println!("Heartbeat service running");
 
     loop {
-        thread::sleep(time::Duration::from_millis(5000));
+        thread::sleep(time::Duration::from_millis(KILL_TIMEOUT));
+        let mut app_ref = app.lock().unwrap();
 
-        let mut app_ref = app.as_ref().lock().unwrap();
-
-        //let mut usersToRemove = vec![];
-
-        /*   let rooms = app_ref.rooms.values();
-
-        for ((name, mut v), room) in app_ref.ws_clients.iter_mut().zip(rooms) {
-            if v.is_alive {
-                v.is_alive = false;
+        // flip users' status to dead
+        let mut users_to_remove = Vec::with_capacity(app_ref.clients_map.keys().len());
+        for (user_uuid, user_conn) in &mut app_ref.clients_map {
+            if user_conn.is_alive {
+                user_conn.is_alive = false;
             } else {
-                let _msg = common::ChatMessage::new("Server",name, room);
-
-                println!("{} left the chat",name);
-                // TODO: send_to_all("{name} left the chat");
-                app_ref.ws_clients.remove(name);
+                users_to_remove.push(user_uuid.clone());
             }
-        }*/
+        }
+
+        // remove dead users
+        for user_uuid in users_to_remove {
+            let user_room = app_ref.user_rooms.get(&user_uuid).unwrap();
+            let user_name = app_ref.user_names.get(&user_uuid).unwrap();
+            let goodbye_msg = format!("{} has left the chat", user_name);
+            let msg = common::ChatMessage::new("Server", &*goodbye_msg, user_room);
+            app_ref.send_within_room(&msg);
+            app_ref.remove_user(&user_uuid);
+        }
     }
 }
 
