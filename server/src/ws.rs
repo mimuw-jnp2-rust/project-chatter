@@ -21,7 +21,7 @@ pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
         if let Err(ref e) = result {
             eprintln!("error sending websocket msg: {}", e);
         };
-        return result;
+        result
     }));
 
     while let Some(result) = client_ws_rcv.next().await {
@@ -30,9 +30,10 @@ pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
             Err(_) => return,
         };
         let msg_json = match msg.to_str() {
-            Ok(msg) => msg,
+            Ok(msg_json) => msg_json,
             Err(_) => return,
         };
+
         let new_client_data: ClientConnectionData =
             serde_json::from_str(msg_json).expect("Error parsing message");
 

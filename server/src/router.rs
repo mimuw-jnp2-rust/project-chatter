@@ -35,6 +35,12 @@ pub struct Router {
     method_map: HashMap<Method, InternalRouter<Box<dyn Handler>>>,
 }
 
+impl Default for Router {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Router {
     pub fn new() -> Router {
         Router {

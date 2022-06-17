@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
-use warp;
 
 type MessageSender = UnboundedSender<Result<warp::ws::Message, warp::Error>>;
 
@@ -38,7 +37,7 @@ pub struct HeartbeatData {
 impl HeartbeatData {
     pub fn new(user_uuid: Uuid) -> Self {
         HeartbeatData {
-            user_uuid: user_uuid,
+            user_uuid,
         }
     }
 }
@@ -51,7 +50,7 @@ pub struct ClientConnectionData {
 impl ClientConnectionData {
     pub fn new(user_uuid: Uuid) -> Self {
         ClientConnectionData {
-            user_uuid: user_uuid,
+            user_uuid,
         }
     }
 }

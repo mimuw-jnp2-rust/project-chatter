@@ -20,6 +20,9 @@ mod handler;
 mod router;
 mod ws;
 
+const WS_ADDR: &str = "127.0.0.1:8000/ws";
+
+
 type Response = hyper::Response<hyper::Body>;
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 type ResultWS<T> = std::result::Result<T, Rejection>;
@@ -57,7 +60,7 @@ impl AppState {
         let room = self.rooms_map.get(&room_uuid).unwrap();
         for user_uuid in &room.members {
             let msg_for_user = Ok(warp::ws::Message::text(msg_json.clone()));
-            let user_conn = self.clients_map.get(&user_uuid).unwrap();
+            let user_conn = self.clients_map.get(user_uuid).unwrap();
             user_conn
                 .sender
                 .send(msg_for_user)
@@ -140,7 +143,7 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
             if user_conn.is_alive {
                 user_conn.is_alive = false;
             } else {
-                users_to_remove.push(user_uuid.clone());
+                users_to_remove.push(*user_uuid);
             }
         }
 
@@ -166,7 +169,7 @@ async fn run_ws(app: Arc<Mutex<AppState>>) {
         .and_then(handler::ws_handler);
 
     let routes = ws_route.with(warp::cors().allow_any_origin());
-    println!("WS open on {}", "127.0.0.1:8000/ws");
+    println!("WS open on {}", WS_ADDR);
     warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
 }
 

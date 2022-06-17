@@ -37,13 +37,17 @@ pub async fn start_handler(mut ctx: Context) -> Response {
         .unwrap()
         .clients_map
         .iter_mut()
-        .find_map(|(k, mut v)| {
-            match v.username.as_mut() {
-                None => {
-                    v.username = Some(username.clone());
-                    Some(k.clone())
-                },
-                Some(uname) => if *uname == username { Some(k.clone()) } else { None },
+        .find_map(|(k, mut v)| match v.username.as_mut() {
+            None => {
+                v.username = Some(username.clone());
+                Some(*k)
+            }
+            Some(uname) => {
+                if *uname == username {
+                    Some(*k)
+                } else {
+                    None
+                }
             }
         });
 
@@ -57,14 +61,13 @@ pub async fn start_handler(mut ctx: Context) -> Response {
         .iter()
         .find_map(|(k, v)| {
             if v.name == room_name {
-                Some(k.clone())
+                Some(*k)
             } else {
                 None
             }
         });
     if room_uuid.is_none() {
-        ctx
-            .app_state
+        ctx.app_state
             .clone()
             .lock()
             .unwrap()
@@ -83,9 +86,9 @@ pub async fn start_handler(mut ctx: Context) -> Response {
                     .body("OK".into())
                     .unwrap()
             }
-            Err(e) => return bad_json_resp(e),
+            Err(e) => bad_json_resp(e),
         },
-        Err(e) => return bad_json_resp(e),
+        Err(e) => bad_json_resp(e),
     }
 }
 
