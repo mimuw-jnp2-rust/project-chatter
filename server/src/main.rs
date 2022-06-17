@@ -4,14 +4,13 @@ use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
-use common::{ChatMessage, Room};
+use common::{ChatMessage, Client, Room};
 use hyper::{
     Body,
     body::to_bytes,
     Request, Server, service::{make_service_fn, service_fn},
 };
 use route_recognizer::Params;
-use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 use warp::{Filter, Rejection};
 
@@ -25,52 +24,37 @@ type Response = hyper::Response<hyper::Body>;
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 type ResultWS<T> = std::result::Result<T, Rejection>;
 
-#[derive(Debug, Clone)]
-pub struct WSClient {
-    pub is_alive: bool,
-    pub sender: UnboundedSender<Result<warp::ws::Message, warp::Error>>,
-}
-
-type WSClientMap = HashMap<Uuid, WSClient>;
+type ClientMap = HashMap<Uuid, Client>;
 type RoomMap = HashMap<Uuid, Room>;
-type UserNameMap = HashMap<Uuid, String>;
-type RoomNameMap = HashMap<Uuid, String>;
-type UserRoomMap = HashMap<Uuid, Uuid>;
 
 pub struct AppState {
     pub name: String,
     pub routing_map: Arc<Router>,
-    pub clients_map: WSClientMap,
+    pub clients_map: ClientMap,
     pub rooms_map: RoomMap,
-    pub user_names: UserNameMap,
-    pub room_names: RoomNameMap,
-    pub user_rooms: UserRoomMap,
 }
 
 impl AppState {
     fn new() -> Arc<Mutex<AppState>> {
         Arc::new(Mutex::new(AppState {
             name: "Pre-websocket server".to_string(),
-            clients_map: WSClientMap::new(),
+            clients_map: ClientMap::new(),
             rooms_map: RoomMap::new(),
-            user_names: UserNameMap::new(),
-            room_names: RoomNameMap::new(),
-            user_rooms: UserRoomMap::new(),
             routing_map: {
                 let mut router: Router = Router::new();
                 // Register endpoints under the router
-                router.get("/test", Box::new(handler::test_handler));
-                router.post("/post", Box::new(handler::send_handler));
+                router.get("/test", Box::new(handler::test_handler)); //TODO: remove
+                router.post("/send_msg", Box::new(handler::send_msg_handler));
+                router.post("/start", Box::new(handler::start_handler));
                 router.post("/heartbeat", Box::new(handler::heartbeat_handler));
                 Arc::new(router)
             },
         }))
     }
 
-    fn send_within_room(&mut self, msg: &ChatMessage) {
+    fn send_to_room(&mut self, msg: &ChatMessage, room_uuid: Uuid) {
         let msg_json = serde_json::to_string(&msg).unwrap();
-        let room = self.rooms_map.get(&msg.room_uuid).unwrap();
-
+        let room = self.rooms_map.get(&room_uuid).unwrap();
         for user_uuid in &room.members {
             let msg_for_user = Ok(warp::ws::Message::text(msg_json.clone()));
             let user_conn = self.clients_map.get(&user_uuid).unwrap();
@@ -81,17 +65,13 @@ impl AppState {
         }
     }
 
-    fn remove_user(&mut self, uuid: &Uuid) {
-        self.clients_map.remove(uuid);
-        //self.user_names.remove(&uuid);
-        //self.user_rooms.remove(&uuid);
+    fn remove_user(&mut self, uuid: Uuid) {
+        self.clients_map.remove(&uuid);
     }
-
 }
 
-
 pub struct Context {
-    pub state: Arc<Mutex<AppState>>,
+    pub app_state: Arc<Mutex<AppState>>,
     pub req: Request<Body>,
     pub params: Params,
     body_bytes: Option<hyper::body::Bytes>,
@@ -100,7 +80,7 @@ pub struct Context {
 impl Context {
     pub fn new(state: Arc<Mutex<AppState>>, req: Request<Body>, params: Params) -> Context {
         Context {
-            state,
+            app_state: state,
             req,
             params,
             body_bytes: None,
@@ -152,11 +132,11 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
 
     loop {
         thread::sleep(time::Duration::from_millis(KILL_TIMEOUT));
-        let mut app_ref = app.lock().unwrap();
+        let mut app = app.lock().unwrap();
 
         // flip users' status to dead
-        let mut users_to_remove = Vec::with_capacity(app_ref.clients_map.keys().len());
-        for (user_uuid, user_conn) in &mut app_ref.clients_map {
+        let mut users_to_remove = Vec::with_capacity(app.clients_map.keys().len());
+        for (user_uuid, user_conn) in &mut app.clients_map {
             if user_conn.is_alive {
                 user_conn.is_alive = false;
             } else {
@@ -166,12 +146,13 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
 
         // remove dead users
         for user_uuid in users_to_remove {
-            let user_room = app_ref.user_rooms.get(&user_uuid).unwrap();
-            let user_name = app_ref.user_names.get(&user_uuid).unwrap();
-            let goodbye_msg = format!("{} has left the chat", user_name);
-            let msg = common::ChatMessage::new("Server", &*goodbye_msg, user_room);
-            app_ref.send_within_room(&msg);
-            app_ref.remove_user(&user_uuid);
+            let user = app.clients_map.get(&user_uuid).unwrap();
+            if let Some(room_uuid) = user.room_uuid {
+                let goodbye_msg = format!("{} has left the chat", user.username.as_ref().unwrap());
+                let msg = common::ChatMessage::new("Server", &*goodbye_msg);
+                app.send_to_room(&msg, room_uuid);
+                app.remove_user(user_uuid);
+            }
         }
     }
 }

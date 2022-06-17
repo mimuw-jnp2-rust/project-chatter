@@ -1,13 +1,16 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
-use chrono::{DateTime, Utc};
+use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
+use warp;
+
+type MessageSender = UnboundedSender<Result<warp::ws::Message, warp::Error>>;
 
 #[derive(Serialize, Deserialize)]
 pub struct ChatMessage {
     pub author: String,
     pub contents: String,
-    pub room_uuid: Uuid,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -18,47 +21,71 @@ impl Display for ChatMessage {
 }
 
 impl ChatMessage {
-    pub fn new(author: &str, contents: &str, room_uuid: &Uuid) -> ChatMessage {
+    pub fn new(author: &str, contents: &str) -> ChatMessage {
         ChatMessage {
             author: author.to_string(),
             contents: contents.to_string(),
-            room_uuid: *room_uuid,
-            timestamp: Utc::now()
+            timestamp: Utc::now(),
         }
     }
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct HeartbeatData {
-    pub client_uuid: Uuid,
+    pub user_uuid: Uuid,
 }
 
 impl HeartbeatData {
-    pub fn new(username: &str) -> HeartbeatData {
+    pub fn new(user_uuid: Uuid) -> Self {
         HeartbeatData {
-            client_uuid: Default::default()
+            user_uuid: user_uuid,
         }
     }
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct ClientConnectionData {
-    pub client_uuid: Uuid,
+    pub user_uuid: Uuid,
 }
 
 impl ClientConnectionData {
-    pub fn new(username: &str) -> ClientConnectionData {
+    pub fn new(user_uuid: Uuid) -> Self {
         ClientConnectionData {
-            client_uuid: Default::default()
+            user_uuid: user_uuid,
         }
     }
 }
 
-#[derive(Serialize, Deserialize)]
 pub struct Room {
     pub name: String,
     pub uuid: Uuid,
     pub members: Vec<Uuid>,
 }
 
+impl Room {
+    pub fn new(name: &str) -> Self {
+        Room {
+            name: name.to_string(),
+            uuid: Uuid::new_v4(),
+            members: vec![],
+        }
+    }
+}
 
+pub struct Client {
+    pub is_alive: bool,
+    pub username: Option<String>,
+    pub room_uuid: Option<Uuid>,
+    pub sender: MessageSender,
+}
+
+impl Client {
+    pub fn new(sender: MessageSender) -> Self {
+        Client {
+            is_alive: true,
+            username: None,
+            room_uuid: None,
+            sender,
+        }
+    }
+}

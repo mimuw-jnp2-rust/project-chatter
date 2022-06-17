@@ -1,10 +1,13 @@
-use crate::handler::not_found_handler;
-use crate::{Context, Response};
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use futures::future::Future;
 use hyper::Method;
 use route_recognizer::{Match, Params, Router as InternalRouter};
-use std::collections::HashMap;
+use uuid::Uuid;
+
+use crate::{Context, Response};
+use crate::handler::not_found_handler;
 
 #[async_trait]
 pub trait Handler: Send + Sync + 'static {

@@ -1,3 +1,4 @@
+use common::Client;
 use common::ClientConnectionData;
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
@@ -7,7 +8,6 @@ use warp::ws::WebSocket;
 use crate::AppState;
 use crate::Arc;
 use crate::Mutex;
-use crate::WSClient;
 
 pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
     println!("establishing client connection... {:?}", ws);
@@ -27,23 +27,21 @@ pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
     while let Some(result) = client_ws_rcv.next().await {
         let msg = match result {
             Ok(msg) => msg,
-            Err(_) => return
+            Err(_) => return,
         };
         let msg_json = match msg.to_str() {
             Ok(msg) => msg,
-            Err(_) => return
+            Err(_) => return,
         };
-        let new_client_data: ClientConnectionData = serde_json::from_str(msg_json).expect("Error parsing message");
+        let new_client_data: ClientConnectionData =
+            serde_json::from_str(msg_json).expect("Error parsing message");
 
-        let new_client = WSClient {
-            is_alive: true,
-            sender: client_sender,
-        };
+        let new_client = Client::new(client_sender);
 
         app.lock()
             .unwrap()
             .clients_map
-            .insert(new_client_data.client_uuid, new_client);
+            .insert(new_client_data.user_uuid, new_client);
 
         return;
     }

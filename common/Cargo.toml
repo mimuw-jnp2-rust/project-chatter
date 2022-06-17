@@ -12,6 +12,8 @@ path = "src/common.rs"
 [dependencies]
 serde = {version = "1.0", features = ["derive"] }
 chrono = { version = "0.4.19", features = ["serde"] }
+tokio = { version= "1", features = ["full"] }
+warp = "0.3"
 
 [dependencies.uuid]
 version = "1.0.0"
