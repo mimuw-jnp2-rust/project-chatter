@@ -1,10 +1,11 @@
+use std::collections::HashSet;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-type MessageSender = UnboundedSender<Result<warp::ws::Message, warp::Error>>;
+type WSSender = UnboundedSender<Result<warp::ws::Message, warp::Error>>;
 
 #[derive(Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -45,12 +46,14 @@ impl HeartbeatData {
 #[derive(Serialize, Deserialize)]
 pub struct ClientConnectionData {
     pub user_uuid: Uuid,
+    pub room_uuid: Uuid,
 }
 
 impl ClientConnectionData {
-    pub fn new(user_uuid: Uuid) -> Self {
+    pub fn new(user_uuid: Uuid, room_uuid: Uuid) -> Self {
         ClientConnectionData {
             user_uuid,
+            room_uuid,
         }
     }
 }
@@ -58,7 +61,7 @@ impl ClientConnectionData {
 pub struct Room {
     pub name: String,
     pub uuid: Uuid,
-    pub members: Vec<Uuid>,
+    pub members: HashSet<Uuid>,
 }
 
 impl Room {
@@ -66,24 +69,26 @@ impl Room {
         Room {
             name: name.to_string(),
             uuid: Uuid::new_v4(),
-            members: vec![],
+            members: HashSet::new(),
         }
+    }
+
+    pub fn remove_user(&mut self, user_uuid: Uuid) {
+        self.members.remove(&user_uuid);
     }
 }
 
 pub struct Client {
     pub is_alive: bool,
     pub username: Option<String>,
-    pub room_uuid: Option<Uuid>,
-    pub sender: MessageSender,
+    pub sender: WSSender,
 }
 
 impl Client {
-    pub fn new(sender: MessageSender) -> Self {
+    pub fn new(sender: WSSender) -> Self {
         Client {
             is_alive: true,
             username: None,
-            room_uuid: None,
             sender,
         }
     }

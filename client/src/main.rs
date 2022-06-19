@@ -2,7 +2,7 @@ use std::{thread, time};
 use std::io::stdin;
 
 use common::{ChatMessage, ClientConnectionData, HeartbeatData};
-use futures::{SinkExt, StreamExt};
+use futures::SinkExt;
 use reqwest::{Client as ReqwestClient, Response};
 use tokio::io::AsyncBufReadExt;
 use tokio::sync::mpsc;
@@ -39,22 +39,9 @@ fn get_line(prompt: &str) -> String {
     return line.trim().to_string();
 }
 
-async fn get_uuids(username: &str, room_name: &str) -> anyhow::Result<(Uuid, Uuid)> {
-    let client = ReqwestClient::new();
-    let data = serde_json::to_string(&(username, room_name))?;
-    Ok(client
-        .post(ADDR.to_string() + "/start")
-        .body(data)
-        .send()
-        .await?
-        .json::<(Uuid, Uuid)>()
-        .await?)
-}
-
-async fn send_msg(msg: ChatMessage, room_uuid: Uuid) -> anyhow::Result<Response> {
-    let client = ReqwestClient::new();
+async fn send_msg(reqwest_client: &ReqwestClient, msg: ChatMessage, room_uuid: Uuid) -> anyhow::Result<Response> {
     let data = serde_json::to_string(&(msg, room_uuid))?;
-    Ok(client
+    Ok(reqwest_client
         .post(ADDR.to_string() + "/send_msg")
         .body(data)
         .send()
@@ -68,26 +55,85 @@ fn greeting() {
     println!();
 }
 
+async fn login(reqwest_client: &ReqwestClient) -> (String, String, Uuid, Uuid) {
+    loop {
+        let username = loop {
+            let res = get_line("Enter username:");
+            if !res.is_empty() {
+                break res;
+            }
+        };
+        let room_name = loop {
+            let res = get_line("Enter room name:");
+            if !res.is_empty() {
+                break res;
+            }
+        };
+        match get_user_uuid(reqwest_client, &username).await {
+            Ok(user_uuid) =>  match get_room_uuid(reqwest_client, &room_name).await {
+                Ok(room_uuid) => return (username, room_name, user_uuid, room_uuid),
+                Err(_) => {
+                    println!("Invalid room name. Please try again.");
+                }
+            },
+            Err(_) => {
+                println!("Invalid username. Please try again.");
+            }
+        }
+    }
+}
+
+async fn get_user_uuid(reqwest_client: &ReqwestClient, username: &str) -> anyhow::Result<Uuid> {
+    let data = serde_json::to_string(username)?;
+    let resp = reqwest_client
+        .post(ADDR.to_string() + "/login")
+        .body(data)
+        .send()
+        .await?;
+    let headers = resp.headers();
+    for (k, v) in headers {
+        println!("({:?}, {:?}", k, v);
+    }
+
+    let user_is_new : bool = serde_json::from_slice( headers.get("room_is_new").expect("No field user_is_new in server response").as_bytes())?;
+    if user_is_new {
+        println!("Nice to meet you, '{}'", username);
+    } else {
+        println!("Welcome back,  '{}'", username);
+    }
+
+    let user_uuid: Uuid = serde_json::from_slice( headers.get("user_uuid").expect("No field user_uuid in server response").as_bytes())?;
+    Ok(user_uuid)
+}
+
+async fn get_room_uuid(reqwest_client: &ReqwestClient, room_name: &str) -> anyhow::Result<Uuid> {
+    let data = serde_json::to_string(room_name)?;
+    let resp = reqwest_client
+        .post(ADDR.to_string() + "/pick_room")
+        .body(data)
+        .send()
+        .await?;
+    let headers = resp.headers();
+
+    let room_is_new : bool = serde_json::from_slice( headers.get("room_is_new").expect("No field room_is_new in server response").as_bytes())?;
+    if room_is_new {
+        println!("Created room '{}'", room_name);
+    }
+
+    let room_uuid: Uuid = serde_json::from_slice( headers.get("room_uuid").expect("No field room_uuid in server response").as_bytes())?;
+    Ok(room_uuid)
+}
+
 #[tokio::main]
 async fn main() {
     greeting();
-
-    let mut username;
-    let mut room_name;
-    let (user_uuid, room_uuid): (Uuid, Uuid) = loop {
-        username = get_line("Enter a username:");
-        room_name = get_line("Enter room:");
-        if let Ok((u, r)) = get_uuids(&username, &room_name).await {
-            break (u, r);
-        } else {
-            println!("Please try again.");
-        }
-    };
+    let reqwest_client = ReqwestClient::new();
 
     let (mut ws_stream, _) = connect_async(WS_ADDR)
         .await
         .expect("Failed to connect to the WS server");
-    println!("Connected to room {}!", room_name);
+    //println!("Connected to websocket");
+    let (username, room_name, user_uuid, room_uuid) = login(&reqwest_client).await;
 
     let (tx_stdin, rx) = mpsc::channel::<String>(1);
     let mut rx = ReceiverStream::new(rx);
@@ -95,7 +141,6 @@ async fn main() {
         loop {
             let mut line = String::new();
             let mut buf_stdin = tokio::io::BufReader::new(tokio::io::stdin());
-
             buf_stdin.read_line(&mut line).await.unwrap();
             tx_stdin.send(line.trim().to_string()).await.unwrap();
         }
@@ -103,14 +148,15 @@ async fn main() {
     tokio::task::spawn(stdin_loop);
     tokio::task::spawn(keep_alive(user_uuid));
 
-    let user_data = ClientConnectionData::new(user_uuid);
+    let user_data = ClientConnectionData::new(user_uuid, room_uuid);
     let _ = ws_stream
         .send(TungsteniteMsg::Text(
             serde_json::to_string(&user_data).unwrap(),
         ))
         .await;
+    println!("Joined room `{}`", room_name);
 
-    loop {
+   /* loop {
         tokio::select! {
             ws_msg = ws_stream.next() => {
                 match ws_msg {
@@ -134,7 +180,7 @@ async fn main() {
                 match stdin_msg {
                     Some(msg) => {
                         let msg = ChatMessage::new(&username, &msg);
-                        let response = send_msg(msg, room_uuid).await;
+                        let response = send_msg(reqwest_client, msg, room_uuid).await;
                         // TODO: Print err on send failure -> fails only on request fail, does not read the response!
                         let status = response.expect("Failed to send message").status();
                         println!("Message sent successfully. Server code: {}", status);
@@ -143,5 +189,5 @@ async fn main() {
                 }
             }
         }
-    }
+    }*/
 }

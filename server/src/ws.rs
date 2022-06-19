@@ -35,15 +35,15 @@ pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
         };
 
         let new_client_data: ClientConnectionData =
-            serde_json::from_str(msg_json).expect("Error parsing message");
+            serde_json::from_str(msg_json).expect("Error parsing client connection message");
 
         let new_client = Client::new(client_sender);
 
         app.lock()
             .unwrap()
-            .clients_map
+            .clients
             .insert(new_client_data.user_uuid, new_client);
 
-        return;
+        return; //FIXME: o co tu chodzi? Przecież przez to nie ma pętli
     }
 }

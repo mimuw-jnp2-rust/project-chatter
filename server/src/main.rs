@@ -33,34 +33,35 @@ type RoomMap = HashMap<Uuid, Room>;
 pub struct AppState {
     pub name: String,
     pub routing_map: Arc<Router>,
-    pub clients_map: ClientMap,
-    pub rooms_map: RoomMap,
+    pub clients: ClientMap, //TODO: ujednolicić nazewnictwo user/client
+    pub rooms: RoomMap,
 }
 
 impl AppState {
     fn new() -> Arc<Mutex<AppState>> {
         Arc::new(Mutex::new(AppState {
             name: "Pre-websocket server".to_string(),
-            clients_map: ClientMap::new(),
-            rooms_map: RoomMap::new(),
+            clients: ClientMap::new(),
+            rooms: RoomMap::new(),
             routing_map: {
                 let mut router: Router = Router::new();
                 // Register endpoints under the router
                 router.get("/test", Box::new(handler::test_handler)); //TODO: remove
                 router.post("/send_msg", Box::new(handler::send_msg_handler));
-                router.post("/start", Box::new(handler::start_handler));
+                router.post("/login", Box::new(handler::login_handler));
+                router.post("/pick_room", Box::new(handler::pick_room_handler));
                 router.post("/heartbeat", Box::new(handler::heartbeat_handler));
                 Arc::new(router)
             },
         }))
     }
 
-    fn send_to_room(&mut self, msg: &ChatMessage, room_uuid: Uuid) {
+    fn send_to_room(&self, msg: &ChatMessage, room_uuid: Uuid) {
         let msg_json = serde_json::to_string(&msg).unwrap();
-        let room = self.rooms_map.get(&room_uuid).unwrap();
+        let room = self.rooms.get(&room_uuid).unwrap();
         for user_uuid in &room.members {
             let msg_for_user = Ok(warp::ws::Message::text(msg_json.clone()));
-            let user_conn = self.clients_map.get(user_uuid).unwrap();
+            let user_conn = self.clients.get(user_uuid).unwrap();
             user_conn
                 .sender
                 .send(msg_for_user)
@@ -68,8 +69,16 @@ impl AppState {
         }
     }
 
+    fn get_dead_users(&self) -> Vec<Uuid> {
+        self.clients.iter().filter(|(_, v)| !v.is_alive).map(|(k, _)| *k).collect::<Vec<_>>()
+    }
+
+    fn get_rooms_for_user(&self, user_uuid: Uuid) -> Vec<Uuid> {
+        self.rooms.iter().filter(|(_, v)| v.members.contains(&user_uuid)).map(|(k, _)| *k).collect::<Vec<_>>()
+    }
+
     fn remove_user(&mut self, uuid: Uuid) {
-        self.clients_map.remove(&uuid);
+        self.clients.remove(&uuid);
     }
 }
 
@@ -137,25 +146,20 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
         thread::sleep(time::Duration::from_millis(KILL_TIMEOUT));
         let mut app = app.lock().unwrap();
 
-        // flip users' status to dead
-        let mut users_to_remove = Vec::with_capacity(app.clients_map.keys().len());
-        for (user_uuid, user_conn) in &mut app.clients_map {
-            if user_conn.is_alive {
-                user_conn.is_alive = false;
-            } else {
-                users_to_remove.push(*user_uuid);
-            }
-        }
+        let dead_users = app.get_dead_users();
+        let user_rooms = dead_users.iter().map(|user| (*user, app.get_rooms_for_user(*user))).collect::<Vec<_>>();
+        app.clients.values_mut().for_each(|user| user.is_alive = false); // flip users' status to dead
 
         // remove dead users
-        for user_uuid in users_to_remove {
-            let user = app.clients_map.get(&user_uuid).unwrap();
-            if let Some(room_uuid) = user.room_uuid {
-                let goodbye_msg = format!("{} has left the chat", user.username.as_ref().unwrap());
-                let msg = common::ChatMessage::new("Server", &*goodbye_msg);
-                app.send_to_room(&msg, room_uuid);
-                app.remove_user(user_uuid);
+        for (user, rooms) in user_rooms {
+            for room in rooms {
+                let username = app.clients.get(&user).unwrap().username.as_ref().unwrap(); // moving this out of the loop causes massive mental gymnastics
+                let goodbye_msg = format!("{} has left the chat", username);
+                let goodbye_msg = common::ChatMessage::new("Server", &*goodbye_msg);
+                app.send_to_room(&goodbye_msg, room);
+                app.rooms.get_mut(&room).unwrap().remove_user(room);
             }
+            app.remove_user(user);
         }
     }
 }
