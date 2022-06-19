@@ -8,6 +8,13 @@ use uuid::Uuid;
 type WSSender = UnboundedSender<Result<warp::ws::Message, warp::Error>>;
 
 #[derive(Serialize, Deserialize)]
+pub enum Data {
+    HeartbeatData(Uuid),
+    NewClientData(String),
+    NewRoomData(String),
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct ChatMessage {
     pub author: String,
     pub contents: String,
@@ -26,34 +33,6 @@ impl ChatMessage {
             author: author.to_string(),
             contents: contents.to_string(),
             timestamp: Utc::now(),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct HeartbeatData {
-    pub user_uuid: Uuid,
-}
-
-impl HeartbeatData {
-    pub fn new(user_uuid: Uuid) -> Self {
-        HeartbeatData {
-            user_uuid,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ClientConnectionData {
-    pub user_uuid: Uuid,
-    pub room_uuid: Uuid,
-}
-
-impl ClientConnectionData {
-    pub fn new(user_uuid: Uuid, room_uuid: Uuid) -> Self {
-        ClientConnectionData {
-            user_uuid,
-            room_uuid,
         }
     }
 }
@@ -80,15 +59,15 @@ impl Room {
 
 pub struct Client {
     pub is_alive: bool,
-    pub username: Option<String>,
+    pub username: String,
     pub sender: WSSender,
 }
 
 impl Client {
-    pub fn new(sender: WSSender) -> Self {
+    pub fn new(sender: WSSender, username: &str) -> Self {
         Client {
             is_alive: true,
-            username: None,
+            username: username.to_string(),
             sender,
         }
     }

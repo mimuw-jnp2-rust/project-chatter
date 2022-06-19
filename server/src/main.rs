@@ -46,10 +46,11 @@ impl AppState {
             routing_map: {
                 let mut router: Router = Router::new();
                 // Register endpoints under the router
-                router.get("/test", Box::new(handler::test_handler)); //TODO: remove
+                router.get("/test", Box::new(handler::test_handler));
                 router.post("/send_msg", Box::new(handler::send_msg_handler));
                 router.post("/login", Box::new(handler::login_handler));
-                router.post("/pick_room", Box::new(handler::pick_room_handler));
+                router.post("/join_room", Box::new(handler::join_room_handler));
+                router.post("/new_room", Box::new(handler::new_room_handler));
                 router.post("/heartbeat", Box::new(handler::heartbeat_handler));
                 Arc::new(router)
             },
@@ -153,8 +154,8 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
         // remove dead users
         for (user, rooms) in user_rooms {
             for room in rooms {
-                let username = app.clients.get(&user).unwrap().username.as_ref().unwrap(); // moving this out of the loop causes massive mental gymnastics
-                let goodbye_msg = format!("{} has left the chat", username);
+                let username = &app.clients.get(&user).unwrap().username; // moving this out of the loop causes massive mental gymnastics
+                let goodbye_msg = format!("{} has left the chat", &username);
                 let goodbye_msg = common::ChatMessage::new("Server", &*goodbye_msg);
                 app.send_to_room(&goodbye_msg, room);
                 app.rooms.get_mut(&room).unwrap().remove_user(room);
@@ -170,7 +171,7 @@ async fn run_ws(app: Arc<Mutex<AppState>>) {
     let ws_route = warp::path("ws")
         .and(warp::ws())
         .and(warp::any().map(move || app.clone())) //TODO: co to robi?
-        .and_then(handler::ws_handler);
+        .and_then(handler::new_client_handler);
 
     let routes = ws_route.with(warp::cors().allow_any_origin());
     println!("WS open on {}", WS_ADDR);

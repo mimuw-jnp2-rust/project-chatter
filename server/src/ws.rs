@@ -1,30 +1,28 @@
-use common::Client;
-use common::ClientConnectionData;
+use common::{Client, Data, Room};
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
+use uuid::Uuid;
 use warp::ws::WebSocket;
 
 use crate::AppState;
 use crate::Arc;
 use crate::Mutex;
 
-pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
-    println!("establishing client connection... {:?}", ws);
-
+pub async fn new_client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
     let (client_ws_sender, mut client_ws_rcv) = ws.split();
     let (client_sender, client_rcv) = mpsc::unbounded_channel();
     let client_rcv = UnboundedReceiverStream::new(client_rcv);
 
     // Keep stream open until disconnected
     tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
-        if let Err(ref e) = result {
-            eprintln!("error sending websocket msg: {}", e);
+        if let Err(e) = result {
+            eprintln!("Error receiving registration request: {}", e);
         };
         result
     }));
 
-    while let Some(result) = client_ws_rcv.next().await {
+    if let Some(result) = client_ws_rcv.next().await {
         let msg = match result {
             Ok(msg) => msg,
             Err(_) => return,
@@ -33,17 +31,16 @@ pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
             Ok(msg_json) => msg_json,
             Err(_) => return,
         };
-
-        let new_client_data: ClientConnectionData =
-            serde_json::from_str(msg_json).expect("Error parsing client connection message");
-
-        let new_client = Client::new(client_sender);
-
-        app.lock()
-            .unwrap()
-            .clients
-            .insert(new_client_data.user_uuid, new_client);
-
-        return; //FIXME: o co tu chodzi? Przecież przez to nie ma pętli
+        match serde_json::from_str(msg_json) {
+            Err(e) => eprintln!("Invalid client registration request: {}", e),
+            Ok(v) => match v {
+                Data::NewClientData(name) => {
+                    let new_client = Client::new(client_sender, &*name);
+                    app.lock().unwrap().clients
+                        .insert(Uuid::new_v4(), new_client);
+                }
+                _ => eprintln!("Invalid client registration request")
+            }
+        }
     }
 }
