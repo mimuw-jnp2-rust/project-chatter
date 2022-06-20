@@ -1,4 +1,4 @@
-use common::{Client, Data, Room};
+use common::{Client, ReqData};
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -16,7 +16,7 @@ pub async fn new_client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
 
     // Keep stream open until disconnected
     tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
-        if let Err(e) = result {
+        if let Err(e) = &result {
             eprintln!("Error receiving registration request: {}", e);
         };
         result
@@ -34,7 +34,7 @@ pub async fn new_client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
         match serde_json::from_str(msg_json) {
             Err(e) => eprintln!("Invalid client registration request: {}", e),
             Ok(v) => match v {
-                Data::NewClientData(name) => {
+                ReqData::NewClientData(name) => {
                     let new_client = Client::new(client_sender, &*name);
                     app.lock().unwrap().clients
                         .insert(Uuid::new_v4(), new_client);

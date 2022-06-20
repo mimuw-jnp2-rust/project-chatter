@@ -1,9 +1,8 @@
 use std::{thread, time};
-use std::future::Future;
 use std::io::stdin;
 
-use common::{ChatMessage, Data};
-use futures::SinkExt;
+use common::{ChatMessage, ReqData};
+use futures::{SinkExt, StreamExt};
 use reqwest::{Client as ReqwestClient, Response};
 use tokio::io::AsyncBufReadExt;
 use tokio::net::TcpStream;
@@ -45,27 +44,7 @@ fn get_nonempty_line(what: &str) -> String {
     }
 }
 
-async fn get_user_uuid(reqwest_client: &ReqwestClient) -> (String, Option<Uuid>) {
-    let username = get_nonempty_line("username");
-    match try_get_user_uuid(reqwest_client, &username).await {
-        Ok(user_uuid) => (username, user_uuid),
-        Err(e) => {
-            panic!("Error while fetching user's UUID: {}", e)
-        }
-    }
-}
-
-async fn get_room_uuid(reqwest_client: &ReqwestClient) -> (String, Option<Uuid>) {
-    let room_name = get_nonempty_line("room name");
-    match try_get_room_uuid(reqwest_client, &room_name).await {
-        Ok(room_uuid) => (room_name, room_uuid),
-        Err(e) => {
-            panic!("Error while fetching room's UUID: {}", e)
-        }
-    }
-}
-
-async fn try_get_user_uuid(reqwest_client: &ReqwestClient, username: &str) -> anyhow::Result<Option<Uuid>> {
+async fn request_login(username: &str, reqwest_client: &ReqwestClient) -> anyhow::Result<Option<Uuid>> {
     let data = serde_json::to_string(username)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/login")
@@ -76,10 +55,19 @@ async fn try_get_user_uuid(reqwest_client: &ReqwestClient, username: &str) -> an
     Ok(serde_json::from_slice(user_uuid.as_bytes())?)
 }
 
-async fn try_get_room_uuid(reqwest_client: &ReqwestClient, room_name: &str) -> anyhow::Result<Option<Uuid>> {
+async fn request_registration(username: &str, reqwest_client: &ReqwestClient, ws_stream: &mut WSStream) -> Uuid {
+    let fail_msg = "Error in registration!";
+    let user_data = ReqData::NewClientData(username.to_string());
+    let user_data = serde_json::to_string(&user_data).unwrap();
+    ws_stream.send(TungsteniteMsg::Text(user_data)).await.expect(fail_msg);
+    let uuid = request_login(&username, &reqwest_client).await.expect(fail_msg).expect(fail_msg);
+    uuid
+}
+
+async fn request_get_room(room_name: &str, reqwest_client: &ReqwestClient) -> anyhow::Result<Option<Uuid>> {
     let data = serde_json::to_string(room_name)?;
     let resp = reqwest_client
-        .post(ADDR.to_string() + "/pick_room")
+        .post(ADDR.to_string() + "/get_room")
         .body(data)
         .send()
         .await?;
@@ -87,36 +75,65 @@ async fn try_get_room_uuid(reqwest_client: &ReqwestClient, room_name: &str) -> a
     Ok(serde_json::from_slice(room_uuid.as_bytes())?)
 }
 
-async fn login(reqwest_client: &ReqwestClient, ws_stream: &mut WSStream) {
-    let fail_msg = "Login failed!";
-    let (username, user_uuid) = get_user_uuid(&reqwest_client).await;
-    if user_uuid.is_none() {
-        println!("Nice to meet you, {}", &username);
-        let user_data = Data::NewClientData(username.clone());
-        let user_data = serde_json::to_string(&user_data).unwrap();
-        ws_stream.send(TungsteniteMsg::Text(user_data)).await.expect(fail_msg);
-    } else {
-        println!("Welcome back, {}", &username);
-    }
-    let user_uuid = try_get_user_uuid(&reqwest_client, &username).await.expect(fail_msg).expect(fail_msg);
-    tokio::task::spawn(keep_alive(user_uuid));
+async fn request_create_room(room_name: &str, reqwest_client: &ReqwestClient) -> anyhow::Result<Uuid> {
+    let data = serde_json::to_string(room_name).expect("Error when serializing room_name");
+    let resp = reqwest_client
+        .post(ADDR.to_string() + "/create_room")
+        .body(data)
+        .send()
+        .await?;
+    let room_uuid = resp.headers().get("room_uuid").expect("No room_uuid header in server response");
+    Ok(serde_json::from_slice(room_uuid.as_bytes())?)
 }
 
-async fn join_room(reqwest_client: &ReqwestClient, ws_stream: &mut WSStream) {
-    let fail_msg = "Joining room failed!";
-    let (room_name, room_uuid) = get_room_uuid(&reqwest_client).await;
-    if room_uuid.is_none() {
-        println!("Created room {}", &room_name);
-        let room_data = Data::NewRoomData(room_name.clone());
-        let room_data = serde_json::to_string(&room_data).unwrap();
-        ws_stream.send(TungsteniteMsg::Text(room_data)).await.expect(fail_msg);
-        println!("HELLO");
+async fn request_join_room(user_uuid: Uuid, user_name: &str, room_uuid: Uuid, reqwest_client: &ReqwestClient) -> anyhow::Result<bool> {
+    let data = serde_json::to_string(&(user_uuid, user_name, room_uuid))?;
+    let resp = reqwest_client
+        .post(ADDR.to_string() + "/join_room")
+        .body(data)
+        .send()
+        .await?;
+    println!("Got a response");
+    let success = resp.headers().get("success").expect("No success header in server response");
+    Ok(serde_json::from_slice(success.as_bytes())?)
+}
+
+async fn login(reqwest_client: &ReqwestClient, ws_stream: &mut WSStream) -> (String, Uuid) {
+    let username = get_nonempty_line("username");
+    let user_uuid = match request_login(&username, &reqwest_client).await.expect("Error during login") {
+        Some(uuid) => {
+            println!("Welcome back, {}", &username);
+            uuid
+        }
+        None => {
+            println!("Nice to meet you, {}", &username);
+            request_registration(&username, reqwest_client, ws_stream).await
+        }
+    };
+    (username, user_uuid)
+}
+
+async fn get_room(reqwest_client: &ReqwestClient) -> (String, Uuid) {
+    let room_name = get_nonempty_line("room name");
+    let room_uuid = match request_get_room(&room_name, &reqwest_client).await.expect("Error finding room") {
+        Some(uuid) => {
+            uuid
+        }
+        None => {
+            println!("Created room '{}'", &room_name);
+            request_create_room(&room_name, reqwest_client).await.expect("Error creating room")
+        }
+    };
+    (room_name, room_uuid)
+}
+
+async fn join_room(user_uuid: Uuid, user_name: &str, room_uuid: Uuid, room_name: &str, reqwest_client: &ReqwestClient) {
+    let success = request_join_room(user_uuid, user_name, room_uuid, &reqwest_client).await.expect("Error joining room");
+    if success {
+        println!("Joined room '{}'", room_name);
     } else {
-        println!("Joined room {}", &room_name);
+        panic!("Error joining room");
     }
-    let room_uuid = try_get_room_uuid(&reqwest_client, &room_name).await;
-    println!("RESULT {:?}", room_uuid)
-    //.expect(fail_msg).expect(fail_msg);
 }
 
 async fn send_msg(reqwest_client: &ReqwestClient, msg: ChatMessage, room_uuid: Uuid) -> anyhow::Result<Response> {
@@ -130,7 +147,7 @@ async fn send_msg(reqwest_client: &ReqwestClient, msg: ChatMessage, room_uuid: U
 
 async fn keep_alive(user_uuid: Uuid) {
     const HEARTBEAT_TIMEOUT: u64 = 2000;
-    let heartbeat_data = Data::HeartbeatData(user_uuid);
+    let heartbeat_data = ReqData::HeartbeatData(user_uuid);
     let client = ReqwestClient::new();
     loop {
         thread::sleep(time::Duration::from_millis(HEARTBEAT_TIMEOUT));
@@ -155,8 +172,10 @@ async fn main() {
         .await
         .expect("Failed to connect to the WS server");
 
-    login(&reqwest_client, &mut ws_stream).await;
-    join_room(&reqwest_client, &mut ws_stream).await;
+    let (user_name, user_uuid) = login(&reqwest_client, &mut ws_stream).await; //TODO: check if user already exists, maybe check for a passwd
+    let (room_name, room_uuid) = get_room(&reqwest_client).await;
+    let _ = join_room(user_uuid, &user_name, room_uuid, &room_name, &reqwest_client).await; //TODO: dodać customowe typy na req
+    tokio::task::spawn(keep_alive(user_uuid));
 
     let (tx_stdin, rx) = mpsc::channel::<String>(1);
     let mut rx = ReceiverStream::new(rx);
@@ -170,7 +189,7 @@ async fn main() {
     };
     tokio::task::spawn(stdin_loop);
 
-   /* loop {
+    loop {
         tokio::select! {
             ws_msg = ws_stream.next() => {
                 match ws_msg {
@@ -178,7 +197,7 @@ async fn main() {
                         Ok(msg) => match msg {
                             TungsteniteMsg::Text(json_str) => {
                                 let mut msg = serde_json::from_str::<ChatMessage>(&json_str).unwrap();
-                                if msg.author == username {
+                                if msg.author == user_name {
                                     msg.author = String::from("YOU");
                                 }
                                 println!("{}", msg);
@@ -193,8 +212,8 @@ async fn main() {
             stdin_msg = rx.next() => {
                 match stdin_msg {
                     Some(msg) => {
-                        let msg = ChatMessage::new(&username, &msg);
-                        let response = send_msg(reqwest_client, msg, room_uuid).await;
+                        let msg = ChatMessage::new(&user_name, &msg);
+                        let response = send_msg(&reqwest_client, msg, room_uuid).await;
                         // TODO: Print err on send failure -> fails only on request fail, does not read the response!
                         let status = response.expect("Failed to send message").status();
                         println!("Message sent successfully. Server code: {}", status);
@@ -203,7 +222,7 @@ async fn main() {
                 }
             }
         }
-    }*/
+    }
 }
 
 

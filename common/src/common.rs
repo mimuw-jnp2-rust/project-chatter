@@ -8,10 +8,11 @@ use uuid::Uuid;
 type WSSender = UnboundedSender<Result<warp::ws::Message, warp::Error>>;
 
 #[derive(Serialize, Deserialize)]
-pub enum Data {
+pub enum ReqData {
     HeartbeatData(Uuid),
     NewClientData(String),
     NewRoomData(String),
+    //TODO: mozna tez ten od joinowania?
 }
 
 #[derive(Serialize, Deserialize)]

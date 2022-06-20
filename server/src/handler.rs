@@ -1,12 +1,12 @@
 use std::collections::hash_map::Entry;
 use std::fmt::Display;
 
-use common::{ChatMessage, Data, Room};
+use common::{ChatMessage, ReqData, Room};
 use hyper::StatusCode;
 use uuid::Uuid;
-use warp::{head, Reply};
+use warp::Reply;
 
-use crate::{Context, Response, ResultWS, ws};
+use crate::{Context, Response, ResultWS, SERVER_SIGNATURE, ws};
 use crate::AppState;
 use crate::Arc;
 use crate::Mutex;
@@ -32,7 +32,7 @@ fn not_found_resp() -> Response {
         .unwrap()
 }
 
-pub async fn new_client_handler(ws: warp::ws::Ws, app: Arc<Mutex<AppState>>) -> ResultWS<impl Reply> {
+pub async fn registration_handler(ws: warp::ws::Ws, app: Arc<Mutex<AppState>>) -> ResultWS<impl Reply> {
     Ok(ws.on_upgrade(move |socket| ws::new_client_connection(socket, app)))
 }
 
@@ -60,15 +60,16 @@ pub async fn login_handler(mut ctx: Context) -> Response {
     }
 }
 
-pub async fn new_room_handler(mut ctx: Context) -> Response {
+pub async fn create_room_handler(mut ctx: Context) -> Response {
     let room_name: String = match ctx.body_json().await {
         Err(e) => return bad_json_resp(e),
         Ok(v) => v,
     };
 
+    let room_uuid = Uuid::new_v4();
     //TODO: check if room already exists
     ctx.app_state.clone().lock().unwrap().rooms.insert(
-        Uuid::new_v4(), Room::new(&*room_name)
+        room_uuid, Room::new(&*room_name)
     );
 
     match serde_json::to_string(&room_uuid) {
@@ -76,12 +77,13 @@ pub async fn new_room_handler(mut ctx: Context) -> Response {
         Ok(room_uuid) =>
             hyper::Response::builder()
                 .status(StatusCode::OK)
+                .header("room_uuid", room_uuid)
                 .body("OK".into())
                 .unwrap()
     }
 }
 
-pub async fn join_room_handler(mut ctx: Context) -> Response {
+pub async fn get_room_handler(mut ctx: Context) -> Response {
     let room_name: String = match ctx.body_json().await {
         Err(e) => return bad_json_resp(e),
         Ok(v) => v,
@@ -100,6 +102,32 @@ pub async fn join_room_handler(mut ctx: Context) -> Response {
             hyper::Response::builder()
                 .status(StatusCode::OK)
                 .header("room_uuid", room_uuid)
+                .body("OK".into())
+                .unwrap()
+    }
+}
+
+pub async fn join_room_handler(mut ctx: Context) -> Response {
+    let (user_uuid, user_name, room_uuid): (Uuid, String, Uuid) = match ctx.body_json().await {
+        Err(e) => return bad_json_resp(e),
+        Ok(v) => v,
+    };
+    let mut success = false;
+    if let Some(room) = ctx.app_state.clone().lock().unwrap().rooms.get_mut(&room_uuid) {
+        room.members.insert(user_uuid); // TODO: metoda `join_room` dla pokoju z np jakimś limitem
+        success = true;
+    }
+    if success {
+        let hello_msg = format!("{} has joined the chat", &user_name);
+        let hello_msg = ChatMessage::new(SERVER_SIGNATURE, &hello_msg);
+        ctx.app_state.lock().unwrap().send_to_room(&hello_msg, room_uuid);
+    }
+    match serde_json::to_string(&success) {
+        Err(e) => bad_json_resp(e),
+        Ok(success) =>
+            hyper::Response::builder()
+                .status(StatusCode::OK)
+                .header("success", success)
                 .body("OK".into())
                 .unwrap()
     }
@@ -136,7 +164,7 @@ pub async fn heartbeat_handler(mut ctx: Context) -> Response {
         Err(e) => bad_json_resp(e),
         Ok(v) => {
             match v {
-                Data::HeartbeatData(user_uuid) => {
+                ReqData::HeartbeatData(user_uuid) => {
                     return match ctx.app_state.clone().lock().unwrap().clients.entry(user_uuid) {
                         Entry::Occupied(mut entry) => {
                             entry.get_mut().is_alive = true;

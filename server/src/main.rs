@@ -21,7 +21,7 @@ mod router;
 mod ws;
 
 const WS_ADDR: &str = "127.0.0.1:8000/ws";
-
+const SERVER_SIGNATURE: &str = "Server";
 
 type Response = hyper::Response<hyper::Body>;
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -49,8 +49,9 @@ impl AppState {
                 router.get("/test", Box::new(handler::test_handler));
                 router.post("/send_msg", Box::new(handler::send_msg_handler));
                 router.post("/login", Box::new(handler::login_handler));
+                router.post("/get_room", Box::new(handler::get_room_handler));
+                router.post("/create_room", Box::new(handler::create_room_handler));
                 router.post("/join_room", Box::new(handler::join_room_handler));
-                router.post("/new_room", Box::new(handler::new_room_handler));
                 router.post("/heartbeat", Box::new(handler::heartbeat_handler));
                 Arc::new(router)
             },
@@ -143,11 +144,18 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
     const KILL_TIMEOUT: u64 = 5000;
     println!("Heartbeat service running");
 
+    let app_clone = app.clone();
+    let clone_machine = move || { app_clone.clone() };
+
     loop {
         thread::sleep(time::Duration::from_millis(KILL_TIMEOUT));
-        let mut app = app.lock().unwrap();
+        let mut app = clone_machine().lock().unwrap();
 
         let dead_users = app.get_dead_users();
+/*        if dead_users.is_empty() {
+            println!("No dead users!");
+            continue;
+        }*/
         let user_rooms = dead_users.iter().map(|user| (*user, app.get_rooms_for_user(*user))).collect::<Vec<_>>();
         app.clients.values_mut().for_each(|user| user.is_alive = false); // flip users' status to dead
 
@@ -156,7 +164,8 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
             for room in rooms {
                 let username = &app.clients.get(&user).unwrap().username; // moving this out of the loop causes massive mental gymnastics
                 let goodbye_msg = format!("{} has left the chat", &username);
-                let goodbye_msg = common::ChatMessage::new("Server", &*goodbye_msg);
+                let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg);
+                //println!("{} bidding farewell!", user);
                 app.send_to_room(&goodbye_msg, room);
                 app.rooms.get_mut(&room).unwrap().remove_user(room);
             }
@@ -170,8 +179,8 @@ async fn run_ws(app: Arc<Mutex<AppState>>) {
 
     let ws_route = warp::path("ws")
         .and(warp::ws())
-        .and(warp::any().map(move || app.clone())) //TODO: co to robi?
-        .and_then(handler::new_client_handler);
+        .and(warp::any().map(move || app.clone()))
+        .and_then(handler::registration_handler);
 
     let routes = ws_route.with(warp::cors().allow_any_origin());
     println!("WS open on {}", WS_ADDR);
