@@ -12,7 +12,14 @@ pub enum ReqData {
     HeartbeatData(Uuid),
     NewClientData(String),
     NewRoomData(String),
-    //TODO: mozna tez ten od joinowania?
+
+    //TODO: wykorzystać:
+    LoginData(String),
+    RegistrationData(),
+    GetRoomData(String),
+    CreateRoomData(String),
+    JoinRoomData(String, Uuid, Uuid),
+    DisconnectData(String, Uuid) //TODO: add a "/exit" command to send this
 }
 
 #[derive(Serialize, Deserialize)]
@@ -42,6 +49,7 @@ pub struct Room {
     pub name: String,
     pub uuid: Uuid,
     pub members: HashSet<Uuid>,
+    //pub capacity: usize,
 }
 
 impl Room {
@@ -51,6 +59,11 @@ impl Room {
             uuid: Uuid::new_v4(),
             members: HashSet::new(),
         }
+    }
+
+    pub fn add_user(&mut self, user_uuid: Uuid) {
+        // TODO: sprawdzenie capacity
+        self.members.insert(&user_uuid);
     }
 
     pub fn remove_user(&mut self, user_uuid: Uuid) {

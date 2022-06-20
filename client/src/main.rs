@@ -60,7 +60,7 @@ async fn request_registration(username: &str, reqwest_client: &ReqwestClient, ws
     let user_data = ReqData::NewClientData(username.to_string());
     let user_data = serde_json::to_string(&user_data).unwrap();
     ws_stream.send(TungsteniteMsg::Text(user_data)).await.expect(fail_msg);
-    let uuid = request_login(&username, &reqwest_client).await.expect(fail_msg).expect(fail_msg);
+    let uuid = request_login(username, reqwest_client).await.expect(fail_msg).expect(fail_msg);
     uuid
 }
 
@@ -100,7 +100,7 @@ async fn request_join_room(user_uuid: Uuid, user_name: &str, room_uuid: Uuid, re
 
 async fn login(reqwest_client: &ReqwestClient, ws_stream: &mut WSStream) -> (String, Uuid) {
     let username = get_nonempty_line("username");
-    let user_uuid = match request_login(&username, &reqwest_client).await.expect("Error during login") {
+    let user_uuid = match request_login(&username, reqwest_client).await.expect("Error during login") {
         Some(uuid) => {
             println!("Welcome back, {}", &username);
             uuid
@@ -115,7 +115,7 @@ async fn login(reqwest_client: &ReqwestClient, ws_stream: &mut WSStream) -> (Str
 
 async fn get_room(reqwest_client: &ReqwestClient) -> (String, Uuid) {
     let room_name = get_nonempty_line("room name");
-    let room_uuid = match request_get_room(&room_name, &reqwest_client).await.expect("Error finding room") {
+    let room_uuid = match request_get_room(&room_name, reqwest_client).await.expect("Error finding room") {
         Some(uuid) => {
             uuid
         }
@@ -128,7 +128,7 @@ async fn get_room(reqwest_client: &ReqwestClient) -> (String, Uuid) {
 }
 
 async fn join_room(user_uuid: Uuid, user_name: &str, room_uuid: Uuid, room_name: &str, reqwest_client: &ReqwestClient) {
-    let success = request_join_room(user_uuid, user_name, room_uuid, &reqwest_client).await.expect("Error joining room");
+    let success = request_join_room(user_uuid, user_name, room_uuid, reqwest_client).await.expect("Error joining room");
     if success {
         println!("Joined room '{}'", room_name);
     } else {
@@ -174,7 +174,7 @@ async fn main() {
 
     let (user_name, user_uuid) = login(&reqwest_client, &mut ws_stream).await; //TODO: check if user already exists, maybe check for a passwd
     let (room_name, room_uuid) = get_room(&reqwest_client).await;
-    let _ = join_room(user_uuid, &user_name, room_uuid, &room_name, &reqwest_client).await; //TODO: dodać customowe typy na req
+    let _ = join_room(user_uuid, &user_name, room_uuid, &room_name, &reqwest_client).await;
     tokio::task::spawn(keep_alive(user_uuid));
 
     let (tx_stdin, rx) = mpsc::channel::<String>(1);

@@ -114,7 +114,7 @@ pub async fn join_room_handler(mut ctx: Context) -> Response {
     };
     let mut success = false;
     if let Some(room) = ctx.app_state.clone().lock().unwrap().rooms.get_mut(&room_uuid) {
-        room.members.insert(user_uuid); // TODO: metoda `join_room` dla pokoju z np jakimś limitem
+        room.add_user(user_uuid);
         success = true;
     }
     if success {

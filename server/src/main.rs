@@ -72,11 +72,19 @@ impl AppState {
     }
 
     fn get_dead_users(&self) -> Vec<Uuid> {
-        self.clients.iter().filter(|(_, v)| !v.is_alive).map(|(k, _)| *k).collect::<Vec<_>>()
+        self.clients
+            .iter()
+            .filter(|(_, v)| !v.is_alive)
+            .map(|(k, _)| *k)
+            .collect::<Vec<_>>()
     }
 
     fn get_rooms_for_user(&self, user_uuid: Uuid) -> Vec<Uuid> {
-        self.rooms.iter().filter(|(_, v)| v.members.contains(&user_uuid)).map(|(k, _)| *k).collect::<Vec<_>>()
+        self.rooms
+            .iter()
+            .filter(|(_, v)| v.members.contains(&user_uuid))
+            .map(|(k, _)| *k)
+            .collect::<Vec<_>>()
     }
 
     fn remove_user(&mut self, uuid: Uuid) {
@@ -144,32 +152,34 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
     const KILL_TIMEOUT: u64 = 5000;
     println!("Heartbeat service running");
 
-    let app_clone = app.clone();
-    let clone_machine = move || { app_clone.clone() };
-
     loop {
         thread::sleep(time::Duration::from_millis(KILL_TIMEOUT));
-        let mut app = clone_machine().lock().unwrap();
+        let dead_users = app.lock().unwrap().get_dead_users();
 
-        let dead_users = app.get_dead_users();
-/*        if dead_users.is_empty() {
-            println!("No dead users!");
-            continue;
-        }*/
-        let user_rooms = dead_users.iter().map(|user| (*user, app.get_rooms_for_user(*user))).collect::<Vec<_>>();
-        app.clients.values_mut().for_each(|user| user.is_alive = false); // flip users' status to dead
+        let user_rooms = dead_users.iter()
+            .map(|user| (*user, app.lock().unwrap().get_rooms_for_user(*user)))
+            .collect::<Vec<_>>();
+        app.lock().unwrap().clients.values_mut()
+            .for_each(|user| user.is_alive = false); // flip users' status to dead
 
         // remove dead users
         for (user, rooms) in user_rooms {
             for room in rooms {
-                let username = &app.clients.get(&user).unwrap().username; // moving this out of the loop causes massive mental gymnastics
-                let goodbye_msg = format!("{} has left the chat", &username);
+                let goodbye_msg = format!(
+                    "{} has left the chat",
+                    &app.lock().unwrap().clients.get(&user).unwrap().username
+                );
                 let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg);
                 //println!("{} bidding farewell!", user);
-                app.send_to_room(&goodbye_msg, room);
-                app.rooms.get_mut(&room).unwrap().remove_user(room);
+                app.lock().unwrap().send_to_room(&goodbye_msg, room);
+                app.lock()
+                    .unwrap()
+                    .rooms
+                    .get_mut(&room)
+                    .unwrap()
+                    .remove_user(room);
             }
-            app.remove_user(user);
+            app.lock().unwrap().remove_user(user);
         }
     }
 }
