@@ -59,8 +59,10 @@ impl AppState {
     }
 
     fn send_to_room(&self, msg: &ChatMessage, room_uuid: Uuid) {
+
         let msg_json = serde_json::to_string(&msg).unwrap();
         let room = self.rooms.get(&room_uuid).unwrap();
+
         for user_uuid in &room.members {
             let msg_for_user = Ok(warp::ws::Message::text(msg_json.clone()));
             let user_conn = self.clients.get(user_uuid).unwrap();
@@ -155,26 +157,38 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
     loop {
         thread::sleep(time::Duration::from_millis(KILL_TIMEOUT));
         let dead_users = app.lock().unwrap().get_dead_users();
+
         if dead_users.is_empty() {
+            println!("Everybody is alive");
+
+            app.lock().unwrap().clients.values_mut()
+            .for_each(|user| user.is_alive = false); // flip users' status to dead
+
             continue;
+        }
+        else{
+            println!("Some clients died");
         }
 
         let user_rooms = dead_users.iter()
             .map(|user| (*user, app.lock().unwrap().get_rooms_for_user(*user)))
             .collect::<Vec<_>>();
-        app.lock().unwrap().clients.values_mut()
-            .for_each(|user| user.is_alive = false); // flip users' status to dead
+
 
         // remove dead users
         for (user, rooms) in user_rooms {
             for room in rooms {
+
                 let goodbye_msg = format!(
                     "{} has left the chat",
                     &app.lock().unwrap().clients.get(&user).unwrap().username
                 );
+
                 let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg);
                 println!("{} bidding farewell!", user);
+
                 app.lock().unwrap().send_to_room(&goodbye_msg, room);
+
                 app.lock()
                     .unwrap()
                     .rooms
@@ -184,6 +198,9 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
             }
             app.lock().unwrap().remove_user(user);
         }
+
+        app.lock().unwrap().clients.values_mut()
+        .for_each(|user| user.is_alive = false); // flip users' status to dead
     }
 }
 
