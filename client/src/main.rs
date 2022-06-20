@@ -146,7 +146,7 @@ async fn send_msg(reqwest_client: &ReqwestClient, msg: ChatMessage, room_uuid: U
 }
 
 async fn keep_alive(user_uuid: Uuid) {
-    const HEARTBEAT_TIMEOUT: u64 = 2000;
+    const HEARTBEAT_TIMEOUT: u64 = 1000;
     let heartbeat_data = ReqData::HeartbeatData(user_uuid);
     let client = ReqwestClient::new();
     loop {

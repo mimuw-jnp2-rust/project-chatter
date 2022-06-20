@@ -63,7 +63,7 @@ impl Room {
 
     pub fn add_user(&mut self, user_uuid: Uuid) {
         // TODO: sprawdzenie capacity
-        self.members.insert(&user_uuid);
+        self.members.insert(user_uuid);
     }
 
     pub fn remove_user(&mut self, user_uuid: Uuid) {

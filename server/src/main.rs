@@ -21,7 +21,7 @@ mod router;
 mod ws;
 
 const WS_ADDR: &str = "127.0.0.1:8000/ws";
-const SERVER_SIGNATURE: &str = "Server";
+const SERVER_SIGNATURE: &str = "SERVER"; //TODO: zarezerwowanie tego nicka
 
 type Response = hyper::Response<hyper::Body>;
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -155,6 +155,9 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
     loop {
         thread::sleep(time::Duration::from_millis(KILL_TIMEOUT));
         let dead_users = app.lock().unwrap().get_dead_users();
+        if dead_users.is_empty() {
+            continue;
+        }
 
         let user_rooms = dead_users.iter()
             .map(|user| (*user, app.lock().unwrap().get_rooms_for_user(*user)))
@@ -170,7 +173,7 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
                     &app.lock().unwrap().clients.get(&user).unwrap().username
                 );
                 let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg);
-                //println!("{} bidding farewell!", user);
+                println!("{} bidding farewell!", user);
                 app.lock().unwrap().send_to_room(&goodbye_msg, room);
                 app.lock()
                     .unwrap()
