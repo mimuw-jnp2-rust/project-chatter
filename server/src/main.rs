@@ -64,12 +64,17 @@ impl AppState {
         let room = self.rooms.get(&room_uuid).unwrap();
 
         for user_uuid in &room.members {
+
+
             let msg_for_user = Ok(warp::ws::Message::text(msg_json.clone()));
-            let user_conn = self.clients.get(user_uuid).unwrap();
-            user_conn
-                .sender
-                .send(msg_for_user)
-                .expect("Sending message failed!");
+
+            if let Some(user_conn) = self.clients.get(user_uuid){
+
+                user_conn
+                    .sender
+                    .send(msg_for_user)
+                    .expect("Sending message failed!");
+            }
         }
     }
 
@@ -177,6 +182,7 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
 
         // remove dead users
         for (user, rooms) in user_rooms {
+            
             for room in rooms {
 
                 let goodbye_msg = format!(
