@@ -86,7 +86,7 @@ impl AppState {
             .collect::<Vec<_>>()
     }
 
-    fn get_rooms_for_user(&self, user_uuid: Uuid) -> Vec<Uuid> {
+    fn get_rooms_for_user(&self, user_uuid: &Uuid) -> Vec<Uuid> {
         self.rooms
             .iter()
             .filter(|(_, v)| v.members.contains(&user_uuid))
@@ -163,11 +163,11 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
         thread::sleep(time::Duration::from_millis(KILL_TIMEOUT));
         let dead_users = app.lock().unwrap().get_dead_users();
 
+        app.lock().unwrap().clients.values_mut()
+        .for_each(|user| user.is_alive = false); // flip users' status to dead
+
         if dead_users.is_empty() {
             println!("Everybody is alive");
-
-            app.lock().unwrap().clients.values_mut()
-            .for_each(|user| user.is_alive = false); // flip users' status to dead
 
             continue;
         }
@@ -175,38 +175,55 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
             println!("Some clients died");
         }
 
-        let user_rooms = dead_users.iter()
-            .map(|user| (*user, app.lock().unwrap().get_rooms_for_user(*user)))
-            .collect::<Vec<_>>();
+        //let user_rooms = dead_users.iter()
+        //    .map(|user| (*user, app.lock().unwrap().get_rooms_for_user(*user)))
+        //    .collect::<Vec<_>>();
 
+        for dead_user_id in dead_users{
 
-        // remove dead users
-        for (user, rooms) in user_rooms {
-            
-            for room in rooms {
+            let goodbye_msg_content = format!(
+                "{} has left the chat",
+                &app.lock().unwrap().clients.get(&dead_user_id).unwrap().username,
+                dead_user_id
+            );   
+            let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
 
-                let goodbye_msg = format!(
-                    "{} has left the chat",
-                    &app.lock().unwrap().clients.get(&user).unwrap().username
-                );
+            println!("{}",goodbye_msg);
 
-                let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg);
-                println!("{} bidding farewell!", user);
+            let dead_user_rooms = app.lock().unwrap().get_rooms_for_user(&dead_user_id);
 
-                app.lock().unwrap().send_to_room(&goodbye_msg, room);
+            for dead_user_room_id in dead_user_rooms {
 
-                app.lock()
-                    .unwrap()
-                    .rooms
-                    .get_mut(&room)
-                    .unwrap()
-                    .remove_user(room);
+                app.lock().unwrap().send_to_room(&goodbye_msg, dead_user_room_id);
             }
-            app.lock().unwrap().remove_user(user);
-        }
 
-        app.lock().unwrap().clients.values_mut()
-        .for_each(|user| user.is_alive = false); // flip users' status to dead
+            app.lock().unwrap().remove_user(dead_user_id);
+        }       
+
+
+        // // remove dead users
+        // for (user, rooms) in user_rooms {
+
+        //     let goodbye_msg = format!(
+        //         "{} has left the chat",
+        //         &app.lock().unwrap().clients.get(&user).unwrap().username
+        //     );          
+
+        //     for room in rooms {
+        //         let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg);
+        //         println!("{} bidding farewell, {}", user,&goodbye_msg);
+
+        //         app.lock().unwrap().send_to_room(&goodbye_msg, room);
+
+        //         app.lock()
+        //             .unwrap()
+        //             .rooms
+        //             .get_mut(&room)
+        //             .unwrap()
+        //             .remove_user(user);
+        //     }
+        //     app.lock().unwrap().remove_user(user);
+        // }
     }
 }
 

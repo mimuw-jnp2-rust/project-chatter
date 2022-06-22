@@ -167,7 +167,7 @@ pub async fn heartbeat_handler(mut ctx: Context) -> Response {
                 ReqData::HeartbeatData(user_uuid) => {
                     return match ctx.app_state.clone().lock().unwrap().clients.entry(user_uuid) {
                         Entry::Occupied(mut entry) => {
-                            println!("Received heartbeat from {}", user_uuid);
+                            println!("Received heartbeat from {}: {}", user_uuid,entry.get().username);
                             entry.get_mut().is_alive = true;
                             ok_resp()
                         },

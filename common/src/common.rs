@@ -67,6 +67,7 @@ impl Room {
     }
 
     pub fn remove_user(&mut self, user_uuid: Uuid) {
+
         self.members.remove(&user_uuid);
     }
 }
