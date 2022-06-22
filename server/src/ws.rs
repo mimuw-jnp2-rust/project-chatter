@@ -17,7 +17,8 @@ pub async fn new_client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
     // Keep stream open until disconnected
     tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
         if let Err(e) = &result {
-            eprintln!("WS connection closed: {}", e);
+
+            eprintln!("Stream closed: {}", e);
         };
         result
     }));

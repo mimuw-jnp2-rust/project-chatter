@@ -174,15 +174,11 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
         else{
             println!("Some clients died");
         }
-
-        //let user_rooms = dead_users.iter()
-        //    .map(|user| (*user, app.lock().unwrap().get_rooms_for_user(*user)))
-        //    .collect::<Vec<_>>();
-
+        
         for dead_user_id in dead_users{
 
             let goodbye_msg_content = format!(
-                "{} has left the chat",
+                "{} has left the chat - id: {}",
                 &app.lock().unwrap().clients.get(&dead_user_id).unwrap().username,
                 dead_user_id
             );   
@@ -199,31 +195,6 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
 
             app.lock().unwrap().remove_user(dead_user_id);
         }       
-
-
-        // // remove dead users
-        // for (user, rooms) in user_rooms {
-
-        //     let goodbye_msg = format!(
-        //         "{} has left the chat",
-        //         &app.lock().unwrap().clients.get(&user).unwrap().username
-        //     );          
-
-        //     for room in rooms {
-        //         let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg);
-        //         println!("{} bidding farewell, {}", user,&goodbye_msg);
-
-        //         app.lock().unwrap().send_to_room(&goodbye_msg, room);
-
-        //         app.lock()
-        //             .unwrap()
-        //             .rooms
-        //             .get_mut(&room)
-        //             .unwrap()
-        //             .remove_user(user);
-        //     }
-        //     app.lock().unwrap().remove_user(user);
-        // }
     }
 }
 
