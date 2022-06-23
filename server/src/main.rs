@@ -16,9 +16,12 @@ use warp::{Filter, Rejection};
 
 use router::Router;
 
+use crate::utils::setup_app_dir;
+
 mod handler;
 mod router;
 mod ws;
+mod utils;
 
 const WS_ADDR: &str = "127.0.0.1:8000/ws";
 const SERVER_SIGNATURE: &str = "SERVER"; //TODO: zarezerwowanie tego nicka
@@ -129,6 +132,7 @@ impl Context {
 async fn main() {
     let app = AppState::new();
 
+    setup_app_dir().expect("App's directory setup failed");
     let http = tokio::spawn(run_http(app.clone()));
     let ws = tokio::spawn(run_ws(app.clone()));
     let heartbeat = tokio::spawn(run_heartbeat_service(app.clone()));
@@ -164,27 +168,25 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
 
         if dead_users.is_empty() {
             println!("Everybody is alive");
-            continue;
         }
-        else{
+        else {
             println!("Some clients died");
-        }
-        
-        for dead_user_id in dead_users{
-            let goodbye_msg_content = format!(
-                "{} has left the chat",
-                &app.lock().unwrap().clients.get(&dead_user_id).unwrap().username
-            );   
-            let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
-            println!("{}",goodbye_msg);
+            for dead_user_id in dead_users{
+                let goodbye_msg_content = format!(
+                    "{} has left the chat",
+                    &app.lock().unwrap().clients.get(&dead_user_id).unwrap().username
+                );
+                let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
+                println!("{}",goodbye_msg);
 
-            let dead_user_rooms = app.lock().unwrap().get_rooms_for_user(&dead_user_id);
-            for dead_user_room_id in dead_user_rooms {
-                app.lock().unwrap().send_to_room(&goodbye_msg, dead_user_room_id);
+                let dead_user_rooms = app.lock().unwrap().get_rooms_for_user(&dead_user_id);
+                for dead_user_room_id in dead_user_rooms {
+                    app.lock().unwrap().send_to_room(&goodbye_msg, dead_user_room_id);
+                }
+
+                app.lock().unwrap().remove_user(dead_user_id);
             }
-
-            app.lock().unwrap().remove_user(dead_user_id);
-        }       
+        }
     }
 }
 

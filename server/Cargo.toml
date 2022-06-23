@@ -17,6 +17,7 @@ async-trait = "0.1"
 chrono = "0.4.0"
 warp = "0.3"
 tokio-stream = "0.1.6"
+dirs = "4.0.0"
 
 [dependencies.uuid]
 version = "1.0.0"

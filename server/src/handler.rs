@@ -10,6 +10,7 @@ use crate::{Context, Response, ResultWS, SERVER_SIGNATURE, ws};
 use crate::AppState;
 use crate::Arc;
 use crate::Mutex;
+use crate::utils::log_msg;
 
 fn bad_json_resp(err: impl Display) -> Response {
     hyper::Response::builder()
@@ -146,7 +147,6 @@ pub async fn join_room_handler(mut ctx: Context) -> Response {
             _ => bad_json_resp("Invalid room joining request received"),
         }
     }
-
 }
 
 pub async fn not_found_handler(_ctx: Context) -> Response {
@@ -163,11 +163,13 @@ pub async fn test_handler(ctx: Context) -> Response {
 }
 
 pub async fn send_msg_handler(mut ctx: Context) -> Response {
+    //TODO: think of adding the room name to `SendMsgData` to create a file of that name
     match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
         Ok(v) => match v {
             ReqData::SendMsgData(msg, room_uuid) => {
                 println!("{}", msg);
+                log_msg(&msg, room_uuid);
                 ctx.app_state.clone().lock().unwrap()
                     .send_to_room(&msg, room_uuid);
                 ok_resp()
@@ -176,6 +178,8 @@ pub async fn send_msg_handler(mut ctx: Context) -> Response {
         }
     }
 }
+
+
 
 pub async fn heartbeat_handler(mut ctx: Context) -> Response {
     match ctx.body_json().await {
