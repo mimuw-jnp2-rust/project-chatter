@@ -12,14 +12,13 @@ pub enum ReqData {
     HeartbeatData(Uuid),
     NewClientData(String),
     NewRoomData(String),
-
-    //TODO: wykorzystać:
-    LoginData(String),
-    RegistrationData(),
+    UserLoginData(String),
+    UserRegistrationData(),
     GetRoomData(String),
     CreateRoomData(String),
     JoinRoomData(String, Uuid, Uuid),
-    DisconnectData(String, Uuid) //TODO: add a "/exit" command to send this
+    SendMsgData(ChatMessage, Uuid),
+    UserDisconnectData(String, Uuid) //TODO: add a "/exit" command to send this
 }
 
 #[derive(Serialize, Deserialize)]
@@ -67,7 +66,6 @@ impl Room {
     }
 
     pub fn remove_user(&mut self, user_uuid: Uuid) {
-
         self.members.remove(&user_uuid);
     }
 }

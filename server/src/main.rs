@@ -59,17 +59,13 @@ impl AppState {
     }
 
     fn send_to_room(&self, msg: &ChatMessage, room_uuid: Uuid) {
-
         let msg_json = serde_json::to_string(&msg).unwrap();
         let room = self.rooms.get(&room_uuid).unwrap();
 
         for user_uuid in &room.members {
-
-
             let msg_for_user = Ok(warp::ws::Message::text(msg_json.clone()));
 
             if let Some(user_conn) = self.clients.get(user_uuid){
-
                 user_conn
                     .sender
                     .send(msg_for_user)
@@ -164,11 +160,10 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
         let dead_users = app.lock().unwrap().get_dead_users();
 
         app.lock().unwrap().clients.values_mut()
-        .for_each(|user| user.is_alive = false); // flip users' status to dead
+            .for_each(|user| user.is_alive = false); // flip users' status to dead
 
         if dead_users.is_empty() {
             println!("Everybody is alive");
-
             continue;
         }
         else{
@@ -176,20 +171,15 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
         }
         
         for dead_user_id in dead_users{
-
             let goodbye_msg_content = format!(
-                "{} has left the chat - id: {}",
-                &app.lock().unwrap().clients.get(&dead_user_id).unwrap().username,
-                dead_user_id
+                "{} has left the chat",
+                &app.lock().unwrap().clients.get(&dead_user_id).unwrap().username
             );   
             let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
-
             println!("{}",goodbye_msg);
 
             let dead_user_rooms = app.lock().unwrap().get_rooms_for_user(&dead_user_id);
-
             for dead_user_room_id in dead_user_rooms {
-
                 app.lock().unwrap().send_to_room(&goodbye_msg, dead_user_room_id);
             }
 

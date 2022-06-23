@@ -45,7 +45,8 @@ fn get_nonempty_line(what: &str) -> String {
 }
 
 async fn request_login(username: &str, reqwest_client: &ReqwestClient) -> anyhow::Result<Option<Uuid>> {
-    let data = serde_json::to_string(username)?;
+    let data = ReqData::UserLoginData(username.to_string());
+    let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/login")
         .body(data)
@@ -65,7 +66,8 @@ async fn request_registration(username: &str, reqwest_client: &ReqwestClient, ws
 }
 
 async fn request_get_room(room_name: &str, reqwest_client: &ReqwestClient) -> anyhow::Result<Option<Uuid>> {
-    let data = serde_json::to_string(room_name)?;
+    let data = ReqData::GetRoomData(room_name.to_string());
+    let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/get_room")
         .body(data)
@@ -76,7 +78,8 @@ async fn request_get_room(room_name: &str, reqwest_client: &ReqwestClient) -> an
 }
 
 async fn request_create_room(room_name: &str, reqwest_client: &ReqwestClient) -> anyhow::Result<Uuid> {
-    let data = serde_json::to_string(room_name).expect("Error when serializing room_name");
+    let data = ReqData::CreateRoomData(room_name.to_string());
+    let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/create_room")
         .body(data)
@@ -87,7 +90,8 @@ async fn request_create_room(room_name: &str, reqwest_client: &ReqwestClient) ->
 }
 
 async fn request_join_room(user_uuid: Uuid, user_name: &str, room_uuid: Uuid, reqwest_client: &ReqwestClient) -> anyhow::Result<bool> {
-    let data = serde_json::to_string(&(user_uuid, user_name, room_uuid))?;
+    let data = ReqData::JoinRoomData(user_name.to_string(), user_uuid, room_uuid);
+    let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/join_room")
         .body(data)
@@ -137,7 +141,8 @@ async fn join_room(user_uuid: Uuid, user_name: &str, room_uuid: Uuid, room_name:
 }
 
 async fn send_msg(reqwest_client: &ReqwestClient, msg: ChatMessage, room_uuid: Uuid) -> anyhow::Result<Response> {
-    let data = serde_json::to_string(&(msg, room_uuid))?;
+    let data = ReqData::SendMsgData(msg, room_uuid);
+    let data = serde_json::to_string(&data)?;
     Ok(reqwest_client
         .post(ADDR.to_string() + "/send_msg")
         .body(data)

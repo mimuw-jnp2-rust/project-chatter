@@ -37,100 +37,116 @@ pub async fn registration_handler(ws: warp::ws::Ws, app: Arc<Mutex<AppState>>) -
 }
 
 pub async fn login_handler(mut ctx: Context) -> Response {
-    let username: String = match ctx.body_json().await {
-        Err(e) => return bad_json_resp(e),
-        Ok(v) => v,
-    };
-    let user_uuid = ctx.app_state.clone().lock().unwrap().clients.iter()
-        .find_map(|(k, v)| {
-            if v.username == username {
-                Some(*k)
-            } else {
-                None
-            }
-        });
-    match serde_json::to_string(&user_uuid) {
+    match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
-        Ok(user_uuid) =>
-            hyper::Response::builder()
-                .status(StatusCode::OK)
-                .header("user_uuid", user_uuid)
-                .body("OK".into())
-                .unwrap()
+        Ok(v) => match v {
+            ReqData::UserLoginData(username) => {
+                let user_uuid = ctx.app_state.clone().lock().unwrap().clients.iter()
+                    .find_map(|(k, v)| {
+                        if v.username == username {
+                            Some(*k)
+                        } else {
+                            None
+                        }
+                    });
+                match serde_json::to_string(&user_uuid) {
+                    Err(e) => bad_json_resp(e),
+                    Ok(user_uuid) =>
+                        hyper::Response::builder()
+                            .status(StatusCode::OK)
+                            .header("user_uuid", user_uuid)
+                            .body("OK".into())
+                            .unwrap()
+                }
+            },
+            _ => bad_json_resp("Invalid login request received"),
+        }
     }
 }
 
 pub async fn create_room_handler(mut ctx: Context) -> Response {
-    let room_name: String = match ctx.body_json().await {
-        Err(e) => return bad_json_resp(e),
-        Ok(v) => v,
-    };
-
-    let room_uuid = Uuid::new_v4();
-    //TODO: check if room already exists
-    ctx.app_state.clone().lock().unwrap().rooms.insert(
-        room_uuid, Room::new(&*room_name)
-    );
-
-    match serde_json::to_string(&room_uuid) {
+    match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
-        Ok(room_uuid) =>
-            hyper::Response::builder()
-                .status(StatusCode::OK)
-                .header("room_uuid", room_uuid)
-                .body("OK".into())
-                .unwrap()
+        Ok(v) => match v {
+            ReqData::CreateRoomData(room_name) => {
+                let room_uuid = Uuid::new_v4();
+                //TODO: check if room already exists, respond with an Option<Uuid>
+                ctx.app_state.clone().lock().unwrap().rooms.insert(
+                    room_uuid, Room::new(&*room_name)
+                );
+
+                match serde_json::to_string(&room_uuid) {
+                    Err(e) => bad_json_resp(e),
+                    Ok(room_uuid) =>
+                        hyper::Response::builder()
+                            .status(StatusCode::OK)
+                            .header("room_uuid", room_uuid)
+                            .body("OK".into())
+                            .unwrap()
+                }
+            }
+            _ => bad_json_resp("Invalid room creation request received"),
+        }
     }
 }
 
 pub async fn get_room_handler(mut ctx: Context) -> Response {
-    let room_name: String = match ctx.body_json().await {
-        Err(e) => return bad_json_resp(e),
-        Ok(v) => v,
-    };
-    let room_uuid = ctx.app_state.clone().lock().unwrap().rooms.iter()
-        .find_map(|(k, v)| {
-            if v.name == room_name {
-                Some(*k)
-            } else {
-                None
-            }
-        });
-    match serde_json::to_string(&room_uuid) {
+    match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
-        Ok(room_uuid) =>
-            hyper::Response::builder()
-                .status(StatusCode::OK)
-                .header("room_uuid", room_uuid)
-                .body("OK".into())
-                .unwrap()
+        Ok(v) => match v {
+            ReqData::GetRoomData(room_name) => {
+                let room_uuid = ctx.app_state.clone().lock().unwrap().rooms.iter()
+                    .find_map(|(k, v)| {
+                        if v.name == room_name {
+                            Some(*k)
+                        } else {
+                            None
+                        }
+                    });
+                match serde_json::to_string(&room_uuid) {
+                    Err(e) => bad_json_resp(e),
+                    Ok(room_uuid) =>
+                        hyper::Response::builder()
+                            .status(StatusCode::OK)
+                            .header("room_uuid", room_uuid)
+                            .body("OK".into())
+                            .unwrap()
+                }
+            },
+            _ => bad_json_resp("Invalid room creation request received"),
+        }
     }
 }
 
 pub async fn join_room_handler(mut ctx: Context) -> Response {
-    let (user_uuid, user_name, room_uuid): (Uuid, String, Uuid) = match ctx.body_json().await {
-        Err(e) => return bad_json_resp(e),
-        Ok(v) => v,
-    };
-    let mut success = false;
-    if let Some(room) = ctx.app_state.clone().lock().unwrap().rooms.get_mut(&room_uuid) {
-        room.add_user(user_uuid);
-        success = true;
-    }
-    if success {
-        let hello_msg = format!("{} has joined the chat", &user_name);
-        let hello_msg = ChatMessage::new(SERVER_SIGNATURE, &hello_msg);
-        ctx.app_state.lock().unwrap().send_to_room(&hello_msg, room_uuid);
-    }
-    match serde_json::to_string(&success) {
+    match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
-        Ok(success) =>
-            hyper::Response::builder()
-                .status(StatusCode::OK)
-                .header("success", success)
-                .body("OK".into())
-                .unwrap()
+        Ok(v) => match v {
+            ReqData::JoinRoomData(user_name, user_uuid, room_uuid) => {
+                let mut success = false;
+                if let Some(room) = ctx.app_state.clone().lock().unwrap().rooms.get_mut(&room_uuid) {
+                    room.add_user(user_uuid);
+                    success = true;
+                }
+                if success {
+                    let hello_msg = format!("{} has joined the chat", &user_name);
+                    let hello_msg = ChatMessage::new(SERVER_SIGNATURE, &hello_msg);
+                    ctx.app_state.lock().unwrap().send_to_room(&hello_msg, room_uuid);
+                }
+                match serde_json::to_string(&success) {
+                    Err(e) => bad_json_resp(e),
+                    Ok(success) =>
+                        hyper::Response::builder()
+                            .status(StatusCode::OK)
+                            .header("success", success)
+                            .body("OK".into())
+                            .unwrap()
+                }
+            },
+            _ => bad_json_resp("Invalid room joining request received"),
+        }
     }
+
 }
 
 pub async fn not_found_handler(_ctx: Context) -> Response {
@@ -147,35 +163,35 @@ pub async fn test_handler(ctx: Context) -> Response {
 }
 
 pub async fn send_msg_handler(mut ctx: Context) -> Response {
-    let (received_msg, room_uuid): (ChatMessage, Uuid) = match ctx.body_json().await {
-        Ok(v) => v,
-        Err(e) => return bad_json_resp(e),
-    };
-
-    println!("{}", received_msg);
-
-    ctx.app_state.clone().lock().unwrap()
-        .send_to_room(&received_msg, room_uuid);
-    ok_resp()
+    match ctx.body_json().await {
+        Err(e) => bad_json_resp(e),
+        Ok(v) => match v {
+            ReqData::SendMsgData(msg, room_uuid) => {
+                println!("{}", msg);
+                ctx.app_state.clone().lock().unwrap()
+                    .send_to_room(&msg, room_uuid);
+                ok_resp()
+            },
+            _ => bad_json_resp("Invalid message sending request received")
+        }
+    }
 }
 
 pub async fn heartbeat_handler(mut ctx: Context) -> Response {
     match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
-        Ok(v) => {
-            match v {
-                ReqData::HeartbeatData(user_uuid) => {
-                    return match ctx.app_state.clone().lock().unwrap().clients.entry(user_uuid) {
-                        Entry::Occupied(mut entry) => {
-                            println!("Received heartbeat from {}: {}", user_uuid,entry.get().username);
-                            entry.get_mut().is_alive = true;
-                            ok_resp()
-                        },
-                        Entry::Vacant(_) => not_found_resp()
-                    }
+        Ok(v) => match v {
+            ReqData::HeartbeatData(user_uuid) => {
+                match ctx.app_state.clone().lock().unwrap().clients.entry(user_uuid) {
+                    Entry::Occupied(mut entry) => {
+                        println!("Received heartbeat from {}: {}", user_uuid,entry.get().username);
+                        entry.get_mut().is_alive = true;
+                        ok_resp()
+                    },
+                    Entry::Vacant(_) => not_found_resp()
                 }
-                _ => bad_json_resp("Invalid heartbeat received"),
             }
+            _ => bad_json_resp("Invalid heartbeat request received"),
         }
     }
 }
