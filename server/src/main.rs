@@ -16,7 +16,7 @@ use warp::{Filter, Rejection};
 
 use router::Router;
 
-use crate::utils::setup_app_dir;
+use crate::utils::{log_msg, setup_app_dir};
 
 mod handler;
 mod router;
@@ -41,7 +41,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    fn new() -> Arc<Mutex<AppState>> {
+    fn new() -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(AppState {
             name: "Pre-websocket server".to_string(),
             clients: ClientMap::new(),
@@ -49,8 +49,11 @@ impl AppState {
             routing_map: {
                 let mut router: Router = Router::new();
                 // Register endpoints under the router
+                //TODO: uporządkować to, w commonie też, w handler.rs też
                 router.get("/test", Box::new(handler::test_handler));
                 router.post("/send_msg", Box::new(handler::send_msg_handler));
+                router.post("/leave_room", Box::new(handler::leave_room_handler));
+                router.post("/exit_app", Box::new(handler::exit_app_handler));
                 router.post("/login", Box::new(handler::login_handler));
                 router.post("/get_room", Box::new(handler::get_room_handler));
                 router.post("/create_room", Box::new(handler::create_room_handler));
@@ -59,6 +62,10 @@ impl AppState {
                 Arc::new(router)
             },
         }))
+    }
+
+    fn from_persistent_storage() -> Arc<Mutex<Self>> {
+        todo!()
     }
 
     fn send_to_room(&self, msg: &ChatMessage, room_uuid: Uuid) {
@@ -85,7 +92,7 @@ impl AppState {
             .collect::<Vec<_>>()
     }
 
-    fn get_rooms_for_user(&self, user_uuid: &Uuid) -> Vec<Uuid> {
+    fn get_user_rooms(&self, user_uuid: Uuid) -> Vec<Uuid> {
         self.rooms
             .iter()
             .filter(|(_, v)| v.members.contains(&user_uuid))
@@ -95,6 +102,34 @@ impl AppState {
 
     fn remove_user(&mut self, uuid: Uuid) {
         self.clients.remove(&uuid);
+    }
+
+    fn disconnect_user_from_one(&mut self, user_uuid: Uuid, room_uuid: Uuid) {
+        let goodbye_msg_content = format!(
+            "{} has left the chat",
+            &self.clients.get(&user_uuid).unwrap().username
+        );
+        let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
+        println!("{}", goodbye_msg);
+        self.send_to_room(&goodbye_msg, room_uuid);
+        self.rooms.get_mut(&room_uuid).unwrap().remove_user(user_uuid);
+        log_msg(&goodbye_msg, room_uuid).expect(&*format!("Error logging message for room {}", room_uuid));
+    }
+
+    fn disconnect_user_from_all(&mut self, user_uuid: Uuid) {
+        let goodbye_msg_content = format!(
+            "{} has left the chat",
+            &self.clients.get(&user_uuid).unwrap().username
+        );
+        let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
+        println!("{}", goodbye_msg);
+
+        let user_rooms = self.get_user_rooms(user_uuid);
+        for room in user_rooms {
+            self.send_to_room(&goodbye_msg, room);
+            self.rooms.get_mut(&room).unwrap().remove_user(user_uuid);
+            log_msg(&goodbye_msg, room).expect(&*format!("Error logging message for room {}", room));
+        }
     }
 }
 
@@ -171,19 +206,12 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
         }
         else {
             println!("Some clients died");
-            for dead_user_id in dead_users{
-                let goodbye_msg_content = format!(
-                    "{} has left the chat",
-                    &app.lock().unwrap().clients.get(&dead_user_id).unwrap().username
-                );
-                let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
-                println!("{}",goodbye_msg);
-
-                let dead_user_rooms = app.lock().unwrap().get_rooms_for_user(&dead_user_id);
-                for dead_user_room_id in dead_user_rooms {
-                    app.lock().unwrap().send_to_room(&goodbye_msg, dead_user_room_id);
-                }
-
+            for dead_user_id in dead_users {
+                app.lock().unwrap().disconnect_user_from_all(dead_user_id);
+                // TODO: jak się to usunie, a user potem znowu włączy apkę, to skutkuje to
+                // wysłaniem przez serwer goodbye-message'a ponownie. Ja bym np stworzył jakiegoś
+                // enuma np UserState i tam trzymał 3 stany: Aktywny, Niekatywny i Martwy. No bo
+                // ustawienie z powrotem `is_alive = true` tutaj byłoby jakieś mega głupie
                 app.lock().unwrap().remove_user(dead_user_id);
             }
         }

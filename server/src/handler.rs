@@ -33,6 +33,18 @@ fn not_found_resp() -> Response {
         .unwrap()
 }
 
+pub async fn not_found_handler(_ctx: Context) -> Response {
+    not_found_resp()
+}
+
+pub async fn test_handler(ctx: Context) -> Response {
+    let app = ctx.app_state.lock().unwrap();
+    hyper::Response::builder()
+        .status(StatusCode::OK)
+        .body(format!("I am {} and I am alive!", app.name).into())
+        .unwrap()
+}
+
 pub async fn registration_handler(ws: warp::ws::Ws, app: Arc<Mutex<AppState>>) -> ResultWS<impl Reply> {
     Ok(ws.on_upgrade(move |socket| ws::new_client_connection(socket, app)))
 }
@@ -41,7 +53,7 @@ pub async fn login_handler(mut ctx: Context) -> Response {
     match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
         Ok(v) => match v {
-            ReqData::UserLoginData(username) => {
+            ReqData::LoginData(username) => {
                 let user_uuid = ctx.app_state.clone().lock().unwrap().clients.iter()
                     .find_map(|(k, v)| {
                         if v.username == username {
@@ -149,27 +161,14 @@ pub async fn join_room_handler(mut ctx: Context) -> Response {
     }
 }
 
-pub async fn not_found_handler(_ctx: Context) -> Response {
-    not_found_resp()
-}
-
-pub async fn test_handler(ctx: Context) -> Response {
-    let app = ctx.app_state.lock().unwrap();
-
-    hyper::Response::builder()
-        .status(StatusCode::OK)
-        .body(format!("I am {} and I am alive!", app.name).into())
-        .unwrap()
-}
-
 pub async fn send_msg_handler(mut ctx: Context) -> Response {
-    //TODO: think of adding the room name to `SendMsgData` to create a file of that name
+    //TODO: think of adding the room name to `SendMsgData` to create a file with that name
     match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
         Ok(v) => match v {
             ReqData::SendMsgData(msg, room_uuid) => {
                 println!("{}", msg);
-                log_msg(&msg, room_uuid);
+                log_msg(&msg, room_uuid).expect(&*format!("Error logging message for room {}", room_uuid));
                 ctx.app_state.clone().lock().unwrap()
                     .send_to_room(&msg, room_uuid);
                 ok_resp()
@@ -179,7 +178,33 @@ pub async fn send_msg_handler(mut ctx: Context) -> Response {
     }
 }
 
+pub async fn leave_room_handler(mut ctx: Context) -> Response {
+    match ctx.body_json().await {
+        Err(e) => bad_json_resp(e),
+        Ok(v) => match v {
+            ReqData::LeaveRoomData(user_uuid, room_uuid) => {
+                ctx.app_state.clone().lock().unwrap()
+                    .disconnect_user_from_one(user_uuid, room_uuid);
+                ok_resp()
+            },
+            _ => bad_json_resp("Invalid room leaving request received")
+        }
+    }
+}
 
+pub async fn exit_app_handler(mut ctx: Context) -> Response {
+    match ctx.body_json().await {
+        Err(e) => bad_json_resp(e),
+        Ok(v) => match v {
+            ReqData::ExitAppData(user_uuid) => {
+                ctx.app_state.clone().lock().unwrap()
+                    .disconnect_user_from_all(user_uuid);
+                ok_resp()
+            },
+            _ => bad_json_resp("Invalid app exit request received")
+        }
+    }
+}
 
 pub async fn heartbeat_handler(mut ctx: Context) -> Response {
     match ctx.body_json().await {

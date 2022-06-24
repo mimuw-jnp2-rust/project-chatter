@@ -1,9 +1,13 @@
 use std::{thread, time};
 use std::io::stdin;
+use std::time::Duration;
 
+use async_std::prelude::FutureExt;
 use common::{ChatMessage, ReqData};
 use futures::{SinkExt, StreamExt};
 use reqwest::{Client as ReqwestClient, Response};
+use signal_hook::consts::SIGTERM;
+use signal_hook::iterator::Signals;
 use tokio::io::AsyncBufReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -14,6 +18,8 @@ use uuid::Uuid;
 
 const ADDR: &str = "http://0.0.0.0:8080";
 const WS_ADDR: &str = "ws://127.0.0.1:8000/ws";
+const EXIT_COMMAND: &str = "/exit"; // exits the entire app
+const LEAVE_COMMAND: &str = "/leave"; // goes back to the lobby
 
 type WSStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -45,7 +51,7 @@ fn get_nonempty_line(what: &str) -> String {
 }
 
 async fn request_login(username: &str, reqwest_client: &ReqwestClient) -> anyhow::Result<Option<Uuid>> {
-    let data = ReqData::UserLoginData(username.to_string());
+    let data = ReqData::LoginData(username.to_string());
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/login")
@@ -58,7 +64,7 @@ async fn request_login(username: &str, reqwest_client: &ReqwestClient) -> anyhow
 
 async fn request_registration(username: &str, reqwest_client: &ReqwestClient, ws_stream: &mut WSStream) -> Uuid {
     let fail_msg = "Error in registration!";
-    let user_data = ReqData::NewClientData(username.to_string());
+    let user_data = ReqData::RegistrationData(username.to_string());
     let user_data = serde_json::to_string(&user_data).unwrap();
     ws_stream.send(TungsteniteMsg::Text(user_data)).await.expect(fail_msg);
     let uuid = request_login(username, reqwest_client).await.expect(fail_msg).expect(fail_msg);
@@ -143,11 +149,34 @@ async fn join_room(user_uuid: Uuid, user_name: &str, room_uuid: Uuid, room_name:
 async fn send_msg(reqwest_client: &ReqwestClient, msg: ChatMessage, room_uuid: Uuid) -> anyhow::Result<Response> {
     let data = ReqData::SendMsgData(msg, room_uuid);
     let data = serde_json::to_string(&data)?;
-    Ok(reqwest_client
+    let resp = reqwest_client
         .post(ADDR.to_string() + "/send_msg")
         .body(data)
         .send()
-        .await?)
+        .await?;
+    Ok(resp)
+}
+
+async fn leave_room(reqwest_client: &ReqwestClient, user_uuid: Uuid, room_uuid: Uuid) -> anyhow::Result<Response> {
+    let data = ReqData::LeaveRoomData(user_uuid, room_uuid);
+    let data = serde_json::to_string(&data)?;
+    let resp = reqwest_client
+        .post(ADDR.to_string() + "/leave_room")
+        .body(data)
+        .send()
+        .await?;
+    Ok(resp)
+}
+
+async fn exit_app(reqwest_client: &ReqwestClient, user_uuid: Uuid) -> anyhow::Result<Response> {
+    let data = ReqData::ExitAppData(user_uuid);
+    let data = serde_json::to_string(&data)?;
+    let resp = reqwest_client
+        .post(ADDR.to_string() + "/exit_app")
+        .body(data)
+        .send()
+        .await?;
+    Ok(resp)
 }
 
 async fn keep_alive(user_uuid: Uuid) {
@@ -168,66 +197,98 @@ async fn keep_alive(user_uuid: Uuid) {
     }
 }
 
-#[tokio::main]
-async fn main() {
+async fn chat_client() {
     greeting();
-
     let reqwest_client = ReqwestClient::new();
     let (mut ws_stream, _) = connect_async(WS_ADDR)
         .await
         .expect("Failed to connect to the WS server");
 
     let (user_name, user_uuid) = login(&reqwest_client, &mut ws_stream).await; //TODO: check if user already exists, maybe check for a passwd
-    let (room_name, room_uuid) = get_room(&reqwest_client).await;
-    let _ = join_room(user_uuid, &user_name, room_uuid, &room_name, &reqwest_client).await;
-    tokio::task::spawn(keep_alive(user_uuid));
+    let _ = tokio::task::spawn(keep_alive(user_uuid));
 
-    let (tx_stdin, rx) = mpsc::channel::<String>(1);
-    let mut rx = ReceiverStream::new(rx);
-    let stdin_loop = async move {
-        loop {
-            let mut line = String::new();
-            let mut buf_stdin = tokio::io::BufReader::new(tokio::io::stdin());
-            buf_stdin.read_line(&mut line).await.unwrap();
-            tx_stdin.send(line.trim().to_string()).await.unwrap();
-        }
-    };
-    tokio::task::spawn(stdin_loop);
-
+    // the lobby loop - select your room here
     loop {
-        tokio::select! {
-            ws_msg = ws_stream.next() => {
-                match ws_msg {
-                    Some(msg) => match msg {
-                        Ok(msg) => match msg {
-                            TungsteniteMsg::Text(json_str) => {
-                                let mut msg = serde_json::from_str::<ChatMessage>(&json_str).unwrap();
-                                if msg.author == user_name {
-                                    msg.author = String::from("YOU");
+        let (room_name, room_uuid) = get_room(&reqwest_client).await;
+        let _ = join_room(user_uuid, &user_name, room_uuid, &room_name, &reqwest_client).await;
+
+        let (tx_stdin, rx) = mpsc::channel::<String>(1);
+        let mut rx = ReceiverStream::new(rx);
+        let stdin_loop = async move {
+            loop {
+                let mut line = String::new();
+                let mut buf_stdin = tokio::io::BufReader::new(tokio::io::stdin());
+                buf_stdin.read_line(&mut line).await.unwrap();
+                tx_stdin.send(line.trim().to_string()).await.unwrap();
+            }
+        };
+        let stdin_loop = tokio::task::spawn(stdin_loop);
+
+        loop {
+            tokio::select! {
+                ws_msg = ws_stream.next() => {
+                    match ws_msg {
+                        Some(msg) => match msg {
+                            Ok(msg) => match msg {
+                                TungsteniteMsg::Text(json_str) => {
+                                    let mut msg = serde_json::from_str::<ChatMessage>(&json_str).unwrap();
+                                    if msg.author == user_name {
+                                        msg.author = String::from("YOU");
+                                    }
+                                    println!("{}", msg);
                                 }
-                                println!("{}", msg);
+                                _ => {eprintln!("Received an invalid type of message");}
                             }
-                            _ => {eprintln!("Received an invalid type of message");}
+                            Err(_) => {eprintln!("WS server went away"); return;}
                         }
-                        Err(_) => {eprintln!("WS server went away"); break;}
+                        None => {eprintln!("No message"); return;}
                     }
-                    None => {eprintln!("No message"); break;}
-                }
-            },
-            stdin_msg = rx.next() => {
-                match stdin_msg {
-                    Some(msg) => {
-                        let msg = ChatMessage::new(&user_name, &msg);
-                        let response = send_msg(&reqwest_client, msg, room_uuid).await;
-                        // TODO: Print err on send failure -> fails only on request fail, does not read the response!
-                        let status = response.expect("Failed to send message").status();
-                        println!("Message sent successfully. Server code: {}", status);
-                    },
-                    None => break
+                },
+                stdin_msg = rx.next() => {
+                    match stdin_msg {
+                        Some(msg) => {
+                            let msg = ChatMessage::new(&user_name, &msg);
+                            let mut should_break = false;
+                            let mut should_return = false;
+                            let response;
+
+                            if msg.contents == EXIT_COMMAND {
+                                response = exit_app(&reqwest_client, user_uuid).await;
+                                should_return = true;
+                            } else if msg.contents == LEAVE_COMMAND {
+                                response = leave_room(&reqwest_client, user_uuid, room_uuid).await;
+                                should_break = true;
+                            } else {
+                                response = send_msg(&reqwest_client, msg, room_uuid).await;
+                            }
+
+                            // TODO: Print err on send failure -> fails only on request fail, does not read the response!
+                            let status = response.expect("Failed to send message").status();
+                            println!("Message sent successfully. Server code: {}", status);
+
+                            if should_break {
+                                break;
+                            }
+                            if should_return {
+                                return;
+                                // FIXME: for some reason this doesn't return immediately, but instead
+                                // `Stream closed: IO error: Connection reset by peer (os error 104)`
+                                // occurs and you need to press any key to exit the program
+                            }
+                        },
+                        None => return
+                    }
                 }
             }
         }
+        stdin_loop.abort(); // end listening for messages on this room
     }
+}
+
+#[tokio::main]
+async fn main() {
+    //let mut signals = Signals::new(&[SIGTERM]).expect("Error when setting up signal handling");
+    chat_client().await;
 }
 
 

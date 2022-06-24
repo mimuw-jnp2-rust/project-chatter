@@ -10,15 +10,14 @@ type WSSender = UnboundedSender<Result<warp::ws::Message, warp::Error>>;
 #[derive(Serialize, Deserialize)]
 pub enum ReqData {
     HeartbeatData(Uuid),
-    NewClientData(String),
-    NewRoomData(String),
-    UserLoginData(String),
-    UserRegistrationData(),
-    GetRoomData(String),
     CreateRoomData(String),
+    GetRoomData(String),
     JoinRoomData(String, Uuid, Uuid),
     SendMsgData(ChatMessage, Uuid),
-    UserDisconnectData(String, Uuid) //TODO: add a "/exit" command to send this
+    LoginData(String),
+    RegistrationData(String),
+    LeaveRoomData(Uuid, Uuid),
+    ExitAppData(Uuid),
 }
 
 #[derive(Serialize, Deserialize)]
