@@ -210,7 +210,7 @@ async fn chat_client() {
     // the lobby loop - select your room here
     loop {
         let (room_name, room_uuid) = get_room(&reqwest_client).await;
-        let _ = join_room(user_uuid, &user_name, room_uuid, &room_name, &reqwest_client).await;
+        let _ = join_room(user_uuid, &user_name, room_uuid, &room_name, &reqwest_client).await; //TODO: dodać exitowanie z lobby, nie tylko z pokoju
 
         let (tx_stdin, rx) = mpsc::channel::<String>(1);
         let mut rx = ReceiverStream::new(rx);
