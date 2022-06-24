@@ -254,6 +254,7 @@ async fn chat_client() {
 
                             if msg.contents == EXIT_COMMAND {
                                 response = exit_app(&reqwest_client, user_uuid).await;
+				ws_stream.close(None);
                                 should_return = true;
                             } else if msg.contents == LEAVE_COMMAND {
                                 response = leave_room(&reqwest_client, user_uuid, room_uuid).await;
