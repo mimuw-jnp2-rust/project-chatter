@@ -6,7 +6,7 @@ use common::ChatMessage;
 use uuid::Uuid;
 
 const APP_DIR: &str = ".chatter";
-const LOGS_DIR: &str = "logs";
+const ROOM_LOGS_DIR: &str = "room_logs";
 //const USERS_DATA_DIR: &str = "users_data";
 //const ROOMS_DATA_DIR: &str = "rooms_data";
 
@@ -17,7 +17,7 @@ fn app_dir_path() -> PathBuf {
 }
 
 fn logs_dir_path() -> PathBuf {
-    app_dir_path().join(LOGS_DIR)
+    app_dir_path().join(ROOM_LOGS_DIR)
 }
 
 fn room_log_path(room_uuid: Uuid) -> PathBuf {
@@ -41,6 +41,8 @@ pub fn setup_app_dir() -> io::Result<()> {
     Ok(())
 }
 
+// TODO: pomyśleć o tym, żeby to było wywoływane co jakiś czas,
+// żeby zminimalizować obciążenie cache'a
 pub fn log_msg(msg: &ChatMessage, room_uuid: Uuid) -> io::Result<()> {
     let path = room_log_path(room_uuid).with_extension("log");
     let mut file = OpenOptions::new()
