@@ -239,21 +239,25 @@ async fn exit_app(reqwest_client: &ReqwestClient, client_uuid: Uuid) -> anyhow::
 }
 
 async fn keep_alive(client_uuid: Uuid) {
-    const HEARTBEAT_TIMEOUT: u64 = 1000;
-    let heartbeat_data = HeartbeatData(ClientUuid(client_uuid));
-    let client = ReqwestClient::new();
-    loop {
-        thread::sleep(Duration::from_millis(HEARTBEAT_TIMEOUT));
-        let data_str = serde_json::to_string(&heartbeat_data).expect("Parsing heartbeat failed");
-
-        // TODO: info on status != 200
-        let _resp = client
-            .post(ADDR.to_string() + HEARTBEAT_ENDPOINT)
-            .body(data_str)
-            .send()
-            .await
-            .expect("Heartbeat request failed");
-    }
+    println!("{}", client_uuid);
+    thread::sleep(Duration::from_millis(2000));
+    //panic!("siema eniu");
+    // const HEARTBEAT_TIMEOUT: u64 = 1000;
+    // let heartbeat_data = HeartbeatData(ClientUuid(client_uuid));
+    // let heartbeat_str = serde_json::to_string(&heartbeat_data).expect("Parsing heartbeat failed");
+    // let client = ReqwestClient::new();
+    // loop {
+    //     thread::sleep(Duration::from_millis(HEARTBEAT_TIMEOUT));
+    //     let heartbeat_str = heartbeat_str.clone();
+    //
+    //     // TODO: info on status != 200
+    //     let _resp = client
+    //         .post(ADDR.to_string() + HEARTBEAT_ENDPOINT)
+    //         .body(heartbeat_str)
+    //         .send()
+    //         .await
+    //         .expect("Heartbeat request failed");
+    // }
 }
 
 async fn chat_client() {
@@ -264,7 +268,7 @@ async fn chat_client() {
         .expect("Failed to connect to the WS server");
 
     let (client_name, client_uuid) = login(&reqwest_client, &mut ws_stream).await; //TODO: check if client already exists, maybe check for a passwd
-    let _ = tokio::task::spawn(keep_alive(client_uuid));
+    let keep_alive_handle = tokio::spawn(keep_alive(client_uuid));
 
     // the lobby loop - select your room here
     loop {
@@ -276,7 +280,7 @@ async fn chat_client() {
             &room_name,
             &reqwest_client,
         )
-        .await; //TODO: dodać exitowanie z lobby, nie tylko z pokoju
+        .await;
 
         let (tx_stdin, rx) = mpsc::channel::<String>(1);
         let mut rx = ReceiverStream::new(rx);
@@ -291,6 +295,10 @@ async fn chat_client() {
         let stdin_loop = tokio::task::spawn(stdin_loop);
 
         loop {
+            if keep_alive_handle.is_finished() {
+                println!("Keep-alive failed!");
+                return;
+            }
             tokio::select! {
                 ws_msg = ws_stream.next() => {
                     match ws_msg {
