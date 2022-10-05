@@ -4,6 +4,7 @@ use std::thread;
 use std::time::Duration;
 
 use futures::{SinkExt, StreamExt};
+use hyper::StatusCode;
 use reqwest::{Client as ReqwestClient, Response};
 use tokio::io::AsyncBufReadExt;
 use tokio::net::TcpStream;
@@ -17,7 +18,7 @@ use JNP2_Rust_Chatter::common::{ReqData::*, *};
 const ADDR: &str = "http://0.0.0.0:8080";
 const WS_ADDR: &str = "ws://127.0.0.1:8000/ws";
 const EXIT_COMMAND: &str = "/exit"; // exits the entire app
-const LEAVE_COMMAND: &str = "/leave"; // goes back to the lobby
+const LOBBY_COMMAND: &str = "/lobby"; // goes back to the lobby
 
 type WSStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -142,7 +143,30 @@ async fn request_join_room(
     get_header(&resp, SUCCESS_HEADER)
 }
 
-async fn login(reqwest_client: &ReqwestClient, ws_stream: &mut WSStream) -> (String, Uuid) {
+async fn send_msg(
+    reqwest_client: &ReqwestClient,
+    msg: ChatMessage,
+    room_uuid: Uuid,
+) -> anyhow::Result<Response> {
+    let body = SendMsgData(msg, RoomUuid(room_uuid));
+    post(reqwest_client, SEND_MSG_ENDPOINT, &body).await
+}
+
+async fn leave_room(
+    reqwest_client: &ReqwestClient,
+    client_uuid: Uuid,
+    room_uuid: Uuid,
+) -> anyhow::Result<Response> {
+    let body = LeaveRoomData(RoomUuid(room_uuid), ClientUuid(client_uuid));
+    post(&reqwest_client, LEAVE_ROOM_ENDPOINT, &body).await
+}
+
+async fn exit_app(reqwest_client: &ReqwestClient, client_uuid: Uuid) -> anyhow::Result<Response> {
+    let body = ExitAppData(ClientUuid(client_uuid));
+    post(&reqwest_client, EXIT_APP_ENDPOINT, &body).await
+}
+
+async fn register_or_login(reqwest_client: &ReqwestClient, ws_stream: &mut WSStream) -> (String, Uuid) {
     let client_name = get_nonempty_line("username");
     let client_uuid = match request_login(&client_name, reqwest_client)
         .await
@@ -194,50 +218,10 @@ async fn join_room(
     }
 }
 
-async fn send_msg(
-    reqwest_client: &ReqwestClient,
-    msg: ChatMessage,
-    room_uuid: Uuid,
-) -> anyhow::Result<Response> {
-    let data = SendMsgData(msg, RoomUuid(room_uuid));
-    let data = serde_json::to_string(&data)?;
-    let resp = reqwest_client
-        .post(ADDR.to_string() + SEND_MSG_ENDPOINT)
-        .body(data)
-        .send()
-        .await?;
-    Ok(resp)
-}
-
-async fn leave_room(
-    reqwest_client: &ReqwestClient,
-    client_uuid: Uuid,
-    room_uuid: Uuid,
-) -> anyhow::Result<Response> {
-    let data = LeaveRoomData(RoomUuid(room_uuid), ClientUuid(client_uuid));
-    let data = serde_json::to_string(&data)?;
-    let resp = reqwest_client
-        .post(ADDR.to_string() + LEAVE_ROOM_ENDPOINT)
-        .body(data)
-        .send()
-        .await?;
-    Ok(resp)
-}
-
-async fn exit_app(reqwest_client: &ReqwestClient, client_uuid: Uuid) -> anyhow::Result<Response> {
-    let data = ExitAppData(ClientUuid(client_uuid));
-    let data = serde_json::to_string(&data)?;
-    let resp = reqwest_client
-        .post(ADDR.to_string() + EXIT_APP_ENDPOINT)
-        .body(data)
-        .send()
-        .await?;
-    Ok(resp)
-}
-
 async fn keep_alive(client_uuid: Uuid) {
+    //TODO: test this
     thread::sleep(Duration::from_millis(2000));
-    panic!("siema eniu");
+    panic!("sayonara, keep-alive!");
 
     // const HEARTBEAT_TIMEOUT: u64 = 1000;
     // let heartbeat_data = HeartbeatData(ClientUuid(client_uuid));
@@ -264,7 +248,7 @@ async fn chat_client() {
         .await
         .expect("Failed to connect to the WS server!");
 
-    let (client_name, client_uuid) = login(&reqwest_client, &mut ws_stream).await; //TODO: check if client already exists, maybe check for a passwd
+    let (client_name, client_uuid) = register_or_login(&reqwest_client, &mut ws_stream).await;
     let keep_alive_handle = tokio::spawn(keep_alive(client_uuid));
 
     // the lobby loop - select your room here
@@ -308,11 +292,11 @@ async fn chat_client() {
                                     }
                                     println!("{}", msg);
                                 }
-                                _ => {eprintln!("Received an invalid type of message");}
+                                _ => { eprintln!("Received an invalid type of message"); }
                             }
-                            Err(_) => {eprintln!("WS server went away"); return;}
+                            Err(_) => { eprintln!("WS server went away"); return; }
                         }
-                        None => {eprintln!("No message"); return;}
+                        None => { eprintln!("No message"); return; }
                     }
                 },
                 stdin_msg = rx.next() => {
@@ -321,26 +305,24 @@ async fn chat_client() {
                             let msg = ChatMessage::new(&client_name, &msg);
                             let mut should_break = false;
                             let mut should_return = false;
-                            let response;
+                            let response =
+                                if msg.contents == EXIT_COMMAND {
+                                    should_return = true;
+                                    ws_stream.close(None).await; //TODO: perhaps check for this error?
+                                    exit_app(&reqwest_client, client_uuid).await;
+                                    temp
+                                } else if msg.contents == LOBBY_COMMAND {
+                                    should_break = true;
+                                    leave_room(&reqwest_client, client_uuid, room_uuid).await
+                                } else {
+                                    send_msg(&reqwest_client, msg, room_uuid).await
+                                };
 
-                            if msg.contents == EXIT_COMMAND {
-                                response = exit_app(&reqwest_client, client_uuid).await;
-                                ws_stream.close(None);
-                                should_return = true;
-                            } else if msg.contents == LEAVE_COMMAND {
-                                response = leave_room(&reqwest_client, client_uuid, room_uuid).await;
-                                should_break = true;
-                            } else {
-                                response = send_msg(&reqwest_client, msg, room_uuid).await;
+                            if response.expect("Failed to send message!").status() != StatusCode::OK {
+                                panic!("Failed to send message!");
                             }
-
-                            let status = response.expect("Failed to send message").status(); //TODO: expect, eprintln ->>> logging
-                            if should_break {
-                                break;
-                            }
-                            if should_return {
-                                return;
-                            }
+                            if should_break { break; }
+                            if should_return { return; }
                         },
                         None => return
                     }

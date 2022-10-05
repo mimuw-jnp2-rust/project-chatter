@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::{self, Display};
@@ -48,7 +48,7 @@ pub enum ReqData {
 pub struct ChatMessage {
     pub author: String,
     pub contents: String,
-    pub timestamp: DateTime<Local>,
+    pub timestamp: DateTime<Utc>,
 }
 
 impl Display for ChatMessage {
@@ -62,7 +62,7 @@ impl ChatMessage {
         ChatMessage {
             author: author.to_string(),
             contents: contents.to_string(),
-            timestamp: Local::now(),
+            timestamp: Utc::now(),
         }
     }
 }

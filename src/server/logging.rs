@@ -39,8 +39,7 @@ pub fn setup_app_dir() -> io::Result<()> {
     Ok(())
 }
 
-// TODO: pomyśleć o tym, żeby to było wywoływane co jakiś czas,
-// żeby zminimalizować obciążenie cache'a
+// TODO: make this run after some n messages (n != 1) to lessen the IO bound's perception for the user
 pub fn log_msg(msg: &ChatMessage, room_uuid: Uuid) -> io::Result<()> {
     let path = room_log_path(room_uuid).with_extension("log");
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;

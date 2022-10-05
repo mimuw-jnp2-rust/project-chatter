@@ -89,7 +89,6 @@ pub async fn create_room_handler(mut ctx: Context) -> Response {
         Ok(v) => match v {
             ReqData::CreateRoomData(room_name) => {
                 let room_uuid = Uuid::new_v4();
-                //TODO: check if room already exists, respond with an Option<Uuid>
                 ctx.app_state
                     .clone()
                     .lock()
