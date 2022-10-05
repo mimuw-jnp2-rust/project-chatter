@@ -1,13 +1,9 @@
-use std::{thread, time};
-use std::io::stdin;
+use std::{thread};
+use std::io::{stdin};
 use std::time::Duration;
 
-use async_std::prelude::FutureExt;
-use common::{ChatMessage, ReqData};
 use futures::{SinkExt, StreamExt};
 use reqwest::{Client as ReqwestClient, Response};
-use signal_hook::consts::SIGTERM;
-use signal_hook::iterator::Signals;
 use tokio::io::AsyncBufReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -15,6 +11,8 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use tungstenite::protocol::Message as TungsteniteMsg;
 use uuid::Uuid;
+use JNP2_Rust_Chatter::common;
+use JNP2_Rust_Chatter::common::ChatMessage;
 
 const ADDR: &str = "http://0.0.0.0:8080";
 const WS_ADDR: &str = "ws://127.0.0.1:8000/ws";
@@ -30,22 +28,27 @@ fn greeting() {
     println!();
 }
 
-fn get_line(prompt: &str) -> String {
+fn get_line(prompt: &str) -> Result<String, std::io::Error> {
     println!("{}", prompt);
     let mut line = String::new();
-    stdin().read_line(&mut line).expect("Failed to read line");
-    return line.trim().to_string();
+    match stdin().read_line(&mut line) {
+        Ok(_) => return Ok(line.trim().to_string()),
+        Err(err) => Err(err),
+    }
 }
 
 fn get_nonempty_line(what: &str) -> String {
     let prompt = format!("Enter {}", what);
     let invalid = format!("Invalid {}. Please try again", what);
     loop {
-        let res = get_line(&prompt);
-        if !res.is_empty() {
-            break res;
-        } else {
-            println!("{}", invalid)
+        match get_line(&*prompt) {
+            Ok(res) =>
+                if res.is_empty() {
+                    println!("{}", invalid);
+                } else {
+                    break res;
+                }
+            Err(err) => println!("Error: {}", err)
         }
     }
 }
@@ -54,7 +57,7 @@ async fn request_login(
     username: &str,
     reqwest_client: &ReqwestClient,
 ) -> anyhow::Result<Option<Uuid>> {
-    let data = ReqData::LoginData(username.to_string());
+    let data = common::ReqData::LoginData(username.to_string());
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/login")
@@ -74,7 +77,7 @@ async fn request_registration(
     ws_stream: &mut WSStream,
 ) -> Uuid {
     let fail_msg = "Error in registration!";
-    let user_data = ReqData::RegistrationData(username.to_string());
+    let user_data = common::ReqData::RegistrationData(username.to_string());
     let user_data = serde_json::to_string(&user_data).unwrap();
     ws_stream
         .send(TungsteniteMsg::Text(user_data))
@@ -91,7 +94,7 @@ async fn request_get_room(
     room_name: &str,
     reqwest_client: &ReqwestClient,
 ) -> anyhow::Result<Option<Uuid>> {
-    let data = ReqData::GetRoomData(room_name.to_string());
+    let data = common::ReqData::GetRoomData(room_name.to_string());
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/get_room")
@@ -109,7 +112,7 @@ async fn request_create_room(
     room_name: &str,
     reqwest_client: &ReqwestClient,
 ) -> anyhow::Result<Uuid> {
-    let data = ReqData::CreateRoomData(room_name.to_string());
+    let data = common::ReqData::CreateRoomData(room_name.to_string());
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/create_room")
@@ -129,7 +132,7 @@ async fn request_join_room(
     room_uuid: Uuid,
     reqwest_client: &ReqwestClient,
 ) -> anyhow::Result<bool> {
-    let data = ReqData::JoinRoomData(user_name.to_string(), user_uuid, room_uuid);
+    let data = common::ReqData::JoinRoomData(user_name.to_string(), user_uuid, room_uuid);
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/join_room")
@@ -200,7 +203,7 @@ async fn send_msg(
     msg: ChatMessage,
     room_uuid: Uuid,
 ) -> anyhow::Result<Response> {
-    let data = ReqData::SendMsgData(msg, room_uuid);
+    let data = common::ReqData::SendMsgData(msg, room_uuid);
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/send_msg")
@@ -215,7 +218,7 @@ async fn leave_room(
     user_uuid: Uuid,
     room_uuid: Uuid,
 ) -> anyhow::Result<Response> {
-    let data = ReqData::LeaveRoomData(user_uuid, room_uuid);
+    let data = common::ReqData::LeaveRoomData(user_uuid, room_uuid);
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/leave_room")
@@ -226,7 +229,7 @@ async fn leave_room(
 }
 
 async fn exit_app(reqwest_client: &ReqwestClient, user_uuid: Uuid) -> anyhow::Result<Response> {
-    let data = ReqData::ExitAppData(user_uuid);
+    let data = common::ReqData::ExitAppData(user_uuid);
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
         .post(ADDR.to_string() + "/exit_app")
@@ -238,10 +241,10 @@ async fn exit_app(reqwest_client: &ReqwestClient, user_uuid: Uuid) -> anyhow::Re
 
 async fn keep_alive(user_uuid: Uuid) {
     const HEARTBEAT_TIMEOUT: u64 = 1000;
-    let heartbeat_data = ReqData::HeartbeatData(user_uuid);
+    let heartbeat_data = common::ReqData::HeartbeatData(user_uuid);
     let client = ReqwestClient::new();
     loop {
-        thread::sleep(time::Duration::from_millis(HEARTBEAT_TIMEOUT));
+        thread::sleep(Duration::from_millis(HEARTBEAT_TIMEOUT));
         let data_str = serde_json::to_string(&heartbeat_data).expect("Parsing heartbeat failed");
 
         // TODO: info on status != 200
@@ -327,18 +330,12 @@ async fn chat_client() {
                                 response = send_msg(&reqwest_client, msg, room_uuid).await;
                             }
 
-                            // TODO: Print err on send failure -> fails only on request fail, does not read the response!
-                            let status = response.expect("Failed to send message").status();
-                            println!("Message sent successfully. Server code: {}", status); //TODO: log this to a file perhaps
-
+                            let status = response.expect("Failed to send message").status(); //TODO: expect, eprintln ->>> logging
                             if should_break {
                                 break;
                             }
                             if should_return {
                                 return;
-                                // FIXME: for some reason this doesn't return immediately, but instead
-                                // `Stream closed: IO error: Connection reset by peer (os error 104)`
-                                // occurs and you need to press any key to exit the program
                             }
                         },
                         None => return
@@ -352,6 +349,5 @@ async fn chat_client() {
 
 #[tokio::main]
 async fn main() {
-    //let mut signals = Signals::new(&[SIGTERM]).expect("Error when setting up signal handling");
     chat_client().await;
 }

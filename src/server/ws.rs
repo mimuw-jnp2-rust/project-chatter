@@ -1,9 +1,10 @@
-use common::{Client, ReqData};
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 use warp::ws::WebSocket;
+
+use JNP2_Rust_Chatter::common::{ReqData, Client};
 
 use crate::AppState;
 use crate::Arc;
