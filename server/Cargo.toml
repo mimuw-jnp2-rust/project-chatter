@@ -15,9 +15,9 @@ route-recognizer = "0.2"
 bytes = "0.5"
 async-trait = "0.1"
 chrono = "0.4.0"
-
 warp = "0.3"
 tokio-stream = "0.1.6"
+dirs = "4.0.0"
 
 [dependencies.uuid]
 version = "1.0.0"
@@ -25,6 +25,7 @@ features = [
     "v4",                # Lets you generate random UUIDs
     "fast-rng",          # Use a faster (but still sufficiently random) RNG
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+    "serde"              # Serialization
 ]
 
 [profile.dev]

@@ -1,34 +1,46 @@
-use crate::AppState;
-use crate::Arc;
-use crate::Mutex;
-use crate::WSClient;
+use common::{Client, ReqData};
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 use warp::ws::WebSocket;
 
-pub async fn client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
-    println!("establishing client connection... {:?}", ws);
+use crate::AppState;
+use crate::Arc;
+use crate::Mutex;
 
-    let (client_ws_sender, _) = ws.split();
+pub async fn new_client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
+    let (client_ws_sender, mut client_ws_rcv) = ws.split();
     let (client_sender, client_rcv) = mpsc::unbounded_channel();
     let client_rcv = UnboundedReceiverStream::new(client_rcv);
 
     // Keep stream open until disconnected
     tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
-        if let Err(ref e) = result {
-            eprintln!("error sending websocket msg: {}", e);
+        if let Err(e) = &result {
+            eprintln!("Stream closed: {}", e);
         };
         result
     }));
 
-    let new_client = WSClient {
-        sender: client_sender,
-    };
-
-    app.lock()
-        .unwrap()
-        .ws_clients
-        .insert(Uuid::new_v4().as_simple().to_string(), new_client);
+    if let Some(result) = client_ws_rcv.next().await {
+        let msg = match result {
+            Ok(msg) => msg,
+            Err(_) => return,
+        };
+        let msg_json = match msg.to_str() {
+            Ok(msg_json) => msg_json,
+            Err(_) => return,
+        };
+        match serde_json::from_str(msg_json) {
+            Err(e) => eprintln!("Invalid client registration request: {}", e),
+            Ok(v) => match v {
+                ReqData::RegistrationData(name) => {
+                    let new_client = Client::new(client_sender, &*name);
+                    app.lock().unwrap().clients
+                        .insert(Uuid::new_v4(), new_client);
+                }
+                _ => eprintln!("Invalid client registration request")
+            }
+        }
+    }
 }
