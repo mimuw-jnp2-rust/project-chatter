@@ -1,10 +1,14 @@
+mod handler;
+mod router;
+mod utils;
+mod ws;
+
 use std::{thread, time};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
-use common::{ChatMessage, Client, Room};
 use hyper::{
     Body,
     body::to_bytes,
@@ -13,22 +17,16 @@ use hyper::{
 use route_recognizer::Params;
 use uuid::Uuid;
 use warp::{Filter, Rejection};
-
-use router::Router;
-
+use JNP2_Rust_Chatter::common::{ChatMessage, Client, Room};
+use crate::router::Router;
 use crate::utils::{log_msg, setup_app_dir};
-
-mod handler;
-mod router;
-mod ws;
-mod utils;
 
 const WS_ADDR: &str = "127.0.0.1:8000/ws";
 const SERVER_SIGNATURE: &str = "SERVER"; //TODO: zarezerwowanie tego nicka
 
-type Response = hyper::Response<hyper::Body>;
+type Response = hyper::Response<Body>;
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
-type ResultWS<T> = std::result::Result<T, Rejection>;
+type ResultWS<T> = Result<T, Rejection>;
 
 type ClientMap = HashMap<Uuid, Client>;
 type RoomMap = HashMap<Uuid, Room>;
@@ -48,9 +46,7 @@ impl AppState {
             rooms: RoomMap::new(),
             routing_map: {
                 let mut router: Router = Router::new();
-                // Register endpoints under the router
-                //TODO: uporządkować to, w commonie też, w handler.rs też
-                router.get("/test", Box::new(handler::test_handler));
+                router.get("/health_check_handler", Box::new(handler::health_check_handler));
                 router.post("/send_msg", Box::new(handler::send_msg_handler));
                 router.post("/leave_room", Box::new(handler::leave_room_handler));
                 router.post("/exit_app", Box::new(handler::exit_app_handler));
@@ -62,10 +58,6 @@ impl AppState {
                 Arc::new(router)
             },
         }))
-    }
-
-    fn from_persistent_storage() -> Arc<Mutex<Self>> {
-        todo!()
     }
 
     fn send_to_room(&self, msg: &ChatMessage, room_uuid: Uuid) {
@@ -109,7 +101,7 @@ impl AppState {
             "{} has left the chat",
             &self.clients.get(&user_uuid).unwrap().username
         );
-        let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
+        let goodbye_msg = ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
         println!("{}", goodbye_msg);
         self.send_to_room(&goodbye_msg, room_uuid);
         self.rooms.get_mut(&room_uuid).unwrap().remove_user(user_uuid);
@@ -121,7 +113,7 @@ impl AppState {
             "{} has left the chat",
             &self.clients.get(&user_uuid).unwrap().username
         );
-        let goodbye_msg = common::ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
+        let goodbye_msg = ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
         println!("{}", goodbye_msg);
 
         let user_rooms = self.get_user_rooms(user_uuid);
@@ -179,7 +171,7 @@ async fn main() {
 
 async fn route_and_handle(
     router: Arc<Router>,
-    req_body: Request<hyper::Body>,
+    req_body: Request<Body>,
     app_state: Arc<Mutex<AppState>>,
 ) -> Result<Response, Error> {
     let found_handler = router.route(req_body.uri().path(), req_body.method());

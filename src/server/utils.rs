@@ -2,8 +2,8 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use common::ChatMessage;
 use uuid::Uuid;
+use JNP2_Rust_Chatter::common::ChatMessage;
 
 const APP_DIR: &str = ".chatter";
 const ROOM_LOGS_DIR: &str = "room_logs";

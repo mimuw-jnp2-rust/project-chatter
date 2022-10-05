@@ -1,10 +1,10 @@
 use std::collections::hash_map::Entry;
 use std::fmt::Display;
 
-use common::{ChatMessage, ReqData, Room};
 use hyper::StatusCode;
 use uuid::Uuid;
 use warp::Reply;
+use JNP2_Rust_Chatter::common::{ChatMessage, ReqData, Room};
 
 use crate::{Context, Response, ResultWS, SERVER_SIGNATURE, ws};
 use crate::AppState;
@@ -37,7 +37,7 @@ pub async fn not_found_handler(_ctx: Context) -> Response {
     not_found_resp()
 }
 
-pub async fn test_handler(ctx: Context) -> Response {
+pub async fn health_check_handler(ctx: Context) -> Response {
     let app = ctx.app_state.lock().unwrap();
     hyper::Response::builder()
         .status(StatusCode::OK)
