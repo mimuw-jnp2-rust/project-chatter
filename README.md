@@ -1,27 +1,26 @@
-# Frobnicator
+# What is this?
 
-## Autorzy
-- Andrzej Głuszak (gr 9, @agluszak na githubie)
-- Linus Torvalds (Uniwersytet Helsiński, @torvalds na githubie)
+What you see is a repository of my final project for the [Languages and tools for programming II (pol. Języki i Narzędzia Programowania II / JNP2)](https://usosweb.mimuw.edu.pl/kontroler.php?_action=katalog2%2Fprzedmioty%2FpokazPrzedmiot&prz_kod=1000-224bJNP2&lang=en) course offered by the Faculty of Mathematics, Informatics and Mechanics at the University of Warsaw in the 2021/2022 summer semester.
 
-## Opis
-Od zawsze chcieliśmy napisać grę komputerową.
-Frobnicator będzie to gra platformowa, w której chodzi o to, żeby...
+The Rust group had its first edition at the time of writing this project. It was a successful experiment carried out by:
+- [Piotr Wojtczak](https://github.com/StarostaGit),
+- [Andrzej Głuszak](https://github.com/agluszak).
 
-Z grubsza będziemy wzorować się na [tym tutorialu](https://dev.to/sbelzile/rust-platformer-part-1-bevy-and-ecs-2pci).
+# Authors
 
-## Funkcjonalność
-- Generowanie map
-- Strzelanie
-- AI dla wrogów (bardziej rozbudowane niż w tutorialu)
-- Możliwość zapisywania i wczytywania stanu gry
-- Punktacja
+Myself and my friend [Jan Zembowicz](https://github.com/JWZ1996).
 
-## Propozycja podziału na części
-W pierwszej części stworzymy grę opartą na tutorialu (z lepszym AI) i jedną zahardcodowaną planszą.
+# Brief description
 
-W drugiej części dodamy do tego losowy generator map, zapisywanie/wczytywanie stanu gry oraz system punktacji.
+The project I decided to write was a simple command-line multi-room chat application. It uses both HTTP and WebSocket protocols.
 
-## Biblioteki
-- Bevy
-- może coś do serializacji danych? (czy mógłby Pan coś polecić?)
+# Full description 
+
+You can find a more in-depth description [**here**](https://github.com/kfernandez31/JNP2-Rust-Chatter/blob/main/tdescription.md).
+
+
+## Uruchomienie
+
+	$ cargo run
+
+	W katalogu odpowiednio dla serwera oraz klienta
