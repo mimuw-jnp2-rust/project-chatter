@@ -11,8 +11,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use tungstenite::protocol::Message as TungsteniteMsg;
 use uuid::Uuid;
-use JNP2_Rust_Chatter::common;
-use JNP2_Rust_Chatter::common::ChatMessage;
+use JNP2_Rust_Chatter::common::{*, ReqData::*};
 
 const ADDR: &str = "http://0.0.0.0:8080";
 const WS_ADDR: &str = "ws://127.0.0.1:8000/ws";
@@ -21,7 +20,7 @@ const LEAVE_COMMAND: &str = "/leave"; // goes back to the lobby
 
 type WSStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-fn greeting() {
+fn print_greeting() {
     println!("==========================");
     println!("=   Welcome to Chatter   =");
     println!("==========================");
@@ -43,7 +42,7 @@ fn get_nonempty_line(what: &str) -> String {
     loop {
         match get_line(&*prompt) {
             Ok(res) =>
-                if res.is_empty() {
+                if res.is_empty() || res == SERVER_SIGNATURE {
                     println!("{}", invalid);
                 } else {
                     break res;
@@ -54,36 +53,36 @@ fn get_nonempty_line(what: &str) -> String {
 }
 
 async fn request_login(
-    username: &str,
+    client_name: &str,
     reqwest_client: &ReqwestClient,
 ) -> anyhow::Result<Option<Uuid>> {
-    let data = common::ReqData::LoginData(username.to_string());
+    let data = LoginData(ClientName(client_name.to_string()));
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
-        .post(ADDR.to_string() + "/login")
+        .post(ADDR.to_string() + LOGIN_ENDPOINT)
         .body(data)
         .send()
         .await?;
-    let user_uuid = resp
+    let client_uuid = resp
         .headers()
-        .get("user_uuid")
-        .expect("No user_uuid header in server response");
-    Ok(serde_json::from_slice(user_uuid.as_bytes())?)
+        .get(CLIENT_UUID_HEADER)
+        .expect("No client_uuid header in server response");
+    Ok(serde_json::from_slice(client_uuid.as_bytes())?)
 }
 
 async fn request_registration(
-    username: &str,
+    client_name: &str,
     reqwest_client: &ReqwestClient,
     ws_stream: &mut WSStream,
 ) -> Uuid {
     let fail_msg = "Error in registration!";
-    let user_data = common::ReqData::RegistrationData(username.to_string());
-    let user_data = serde_json::to_string(&user_data).unwrap();
+    let client_data = RegistrationData(ClientName(client_name.to_string()));
+    let client_data = serde_json::to_string(&client_data).unwrap();
     ws_stream
-        .send(TungsteniteMsg::Text(user_data))
+        .send(TungsteniteMsg::Text(client_data))
         .await
         .expect(fail_msg);
-    let uuid = request_login(username, reqwest_client)
+    let uuid = request_login(client_name, reqwest_client)
         .await
         .expect(fail_msg)
         .expect(fail_msg);
@@ -94,16 +93,16 @@ async fn request_get_room(
     room_name: &str,
     reqwest_client: &ReqwestClient,
 ) -> anyhow::Result<Option<Uuid>> {
-    let data = common::ReqData::GetRoomData(room_name.to_string());
+    let data = GetRoomData(RoomName(room_name.to_string()));
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
-        .post(ADDR.to_string() + "/get_room")
+        .post(ADDR.to_string() + GET_ROOM_ENDPOINT)
         .body(data)
         .send()
         .await?;
     let room_uuid = resp
         .headers()
-        .get("room_uuid")
+        .get(ROOM_UUID_HEADER)
         .expect("No room_uuid header in server response");
     Ok(serde_json::from_slice(room_uuid.as_bytes())?)
 }
@@ -112,56 +111,56 @@ async fn request_create_room(
     room_name: &str,
     reqwest_client: &ReqwestClient,
 ) -> anyhow::Result<Uuid> {
-    let data = common::ReqData::CreateRoomData(room_name.to_string());
+    let data = CreateRoomData(RoomName(room_name.to_string()));
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
-        .post(ADDR.to_string() + "/create_room")
+        .post(ADDR.to_string() + CREATE_ROOM_ENDPOINT)
         .body(data)
         .send()
         .await?;
     let room_uuid = resp
         .headers()
-        .get("room_uuid")
+        .get(ROOM_UUID_HEADER)
         .expect("No room_uuid header in server response");
     Ok(serde_json::from_slice(room_uuid.as_bytes())?)
 }
 
 async fn request_join_room(
-    user_uuid: Uuid,
-    user_name: &str,
+    client_uuid: Uuid,
+    client_name: &str,
     room_uuid: Uuid,
     reqwest_client: &ReqwestClient,
 ) -> anyhow::Result<bool> {
-    let data = common::ReqData::JoinRoomData(user_name.to_string(), user_uuid, room_uuid);
+    let data = JoinRoomData(ClientName(client_name.to_string()), ClientUuid(client_uuid), RoomUuid(room_uuid));
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
-        .post(ADDR.to_string() + "/join_room")
+        .post(ADDR.to_string() + JOIN_ROOM_ENDPOINT)
         .body(data)
         .send()
         .await?;
     let success = resp
         .headers()
-        .get("success")
+        .get(SUCCESS_HEADER)
         .expect("No success header in server response");
     Ok(serde_json::from_slice(success.as_bytes())?)
 }
 
 async fn login(reqwest_client: &ReqwestClient, ws_stream: &mut WSStream) -> (String, Uuid) {
-    let username = get_nonempty_line("username");
-    let user_uuid = match request_login(&username, reqwest_client)
+    let client_name = get_nonempty_line("username");
+    let client_uuid = match request_login(&client_name, reqwest_client)
         .await
         .expect("Error during login")
     {
         Some(uuid) => {
-            println!("Welcome back, {}", &username);
+            println!("Welcome back, {}", &client_name);
             uuid
         }
         None => {
-            println!("Nice to meet you, {}", &username);
-            request_registration(&username, reqwest_client, ws_stream).await
+            println!("Nice to meet you, {}", &client_name);
+            request_registration(&client_name, reqwest_client, ws_stream).await
         }
     };
-    (username, user_uuid)
+    (client_name, client_uuid)
 }
 
 async fn get_room(reqwest_client: &ReqwestClient) -> (String, Uuid) {
@@ -182,13 +181,13 @@ async fn get_room(reqwest_client: &ReqwestClient) -> (String, Uuid) {
 }
 
 async fn join_room(
-    user_uuid: Uuid,
-    user_name: &str,
+    client_uuid: Uuid,
+    client_name: &str,
     room_uuid: Uuid,
     room_name: &str,
     reqwest_client: &ReqwestClient,
 ) {
-    let success = request_join_room(user_uuid, user_name, room_uuid, reqwest_client)
+    let success = request_join_room(client_uuid, client_name, room_uuid, reqwest_client)
         .await
         .expect("Error joining room");
     if success {
@@ -203,10 +202,10 @@ async fn send_msg(
     msg: ChatMessage,
     room_uuid: Uuid,
 ) -> anyhow::Result<Response> {
-    let data = common::ReqData::SendMsgData(msg, room_uuid);
+    let data = SendMsgData(msg, RoomUuid(room_uuid));
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
-        .post(ADDR.to_string() + "/send_msg")
+        .post(ADDR.to_string() + SEND_MSG_ENDPOINT)
         .body(data)
         .send()
         .await?;
@@ -215,33 +214,33 @@ async fn send_msg(
 
 async fn leave_room(
     reqwest_client: &ReqwestClient,
-    user_uuid: Uuid,
+    client_uuid: Uuid,
     room_uuid: Uuid,
 ) -> anyhow::Result<Response> {
-    let data = common::ReqData::LeaveRoomData(user_uuid, room_uuid);
+    let data = LeaveRoomData(RoomUuid(room_uuid), ClientUuid(client_uuid));
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
-        .post(ADDR.to_string() + "/leave_room")
+        .post(ADDR.to_string() + LEAVE_ROOM_ENDPOINT)
         .body(data)
         .send()
         .await?;
     Ok(resp)
 }
 
-async fn exit_app(reqwest_client: &ReqwestClient, user_uuid: Uuid) -> anyhow::Result<Response> {
-    let data = common::ReqData::ExitAppData(user_uuid);
+async fn exit_app(reqwest_client: &ReqwestClient, client_uuid: Uuid) -> anyhow::Result<Response> {
+    let data = ExitAppData(ClientUuid(client_uuid));
     let data = serde_json::to_string(&data)?;
     let resp = reqwest_client
-        .post(ADDR.to_string() + "/exit_app")
+        .post(ADDR.to_string() + EXIT_APP_ENDPOINT)
         .body(data)
         .send()
         .await?;
     Ok(resp)
 }
 
-async fn keep_alive(user_uuid: Uuid) {
+async fn keep_alive(client_uuid: Uuid) {
     const HEARTBEAT_TIMEOUT: u64 = 1000;
-    let heartbeat_data = common::ReqData::HeartbeatData(user_uuid);
+    let heartbeat_data = HeartbeatData(ClientUuid(client_uuid));
     let client = ReqwestClient::new();
     loop {
         thread::sleep(Duration::from_millis(HEARTBEAT_TIMEOUT));
@@ -249,7 +248,7 @@ async fn keep_alive(user_uuid: Uuid) {
 
         // TODO: info on status != 200
         let _resp = client
-            .post(ADDR.to_string() + "/heartbeat")
+            .post(ADDR.to_string() + HEARTBEAT_ENDPOINT)
             .body(data_str)
             .send()
             .await
@@ -258,21 +257,21 @@ async fn keep_alive(user_uuid: Uuid) {
 }
 
 async fn chat_client() {
-    greeting();
+    print_greeting();
     let reqwest_client = ReqwestClient::new();
     let (mut ws_stream, _) = connect_async(WS_ADDR)
         .await
         .expect("Failed to connect to the WS server");
 
-    let (user_name, user_uuid) = login(&reqwest_client, &mut ws_stream).await; //TODO: check if user already exists, maybe check for a passwd
-    let _ = tokio::task::spawn(keep_alive(user_uuid));
+    let (client_name, client_uuid) = login(&reqwest_client, &mut ws_stream).await; //TODO: check if client already exists, maybe check for a passwd
+    let _ = tokio::task::spawn(keep_alive(client_uuid));
 
     // the lobby loop - select your room here
     loop {
         let (room_name, room_uuid) = get_room(&reqwest_client).await;
         let _ = join_room(
-            user_uuid,
-            &user_name,
+            client_uuid,
+            &client_name,
             room_uuid,
             &room_name,
             &reqwest_client,
@@ -299,7 +298,7 @@ async fn chat_client() {
                             Ok(msg) => match msg {
                                 TungsteniteMsg::Text(json_str) => {
                                     let mut msg = serde_json::from_str::<ChatMessage>(&json_str).unwrap();
-                                    if msg.author == user_name {
+                                    if msg.author == client_name {
                                         msg.author = String::from("YOU");
                                     }
                                     println!("{}", msg);
@@ -314,17 +313,17 @@ async fn chat_client() {
                 stdin_msg = rx.next() => {
                     match stdin_msg {
                         Some(msg) => {
-                            let msg = ChatMessage::new(&user_name, &msg);
+                            let msg = ChatMessage::new(&client_name, &msg);
                             let mut should_break = false;
                             let mut should_return = false;
                             let response;
 
                             if msg.contents == EXIT_COMMAND {
-                                response = exit_app(&reqwest_client, user_uuid).await;
+                                response = exit_app(&reqwest_client, client_uuid).await;
                                 ws_stream.close(None);
                                 should_return = true;
                             } else if msg.contents == LEAVE_COMMAND {
-                                response = leave_room(&reqwest_client, user_uuid, room_uuid).await;
+                                response = leave_room(&reqwest_client, client_uuid, room_uuid).await;
                                 should_break = true;
                             } else {
                                 response = send_msg(&reqwest_client, msg, room_uuid).await;

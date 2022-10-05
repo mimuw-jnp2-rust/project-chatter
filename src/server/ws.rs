@@ -36,7 +36,7 @@ pub async fn new_client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
             Err(e) => eprintln!("Invalid client registration request: {}", e),
             Ok(v) => match v {
                 ReqData::RegistrationData(name) => {
-                    let new_client = Client::new(client_sender, &*name);
+                    let new_client = Client::new(client_sender, &*name.0);
                     app.lock().unwrap().clients
                         .insert(Uuid::new_v4(), new_client);
                 }

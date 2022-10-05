@@ -1,6 +1,6 @@
 mod handler;
 mod router;
-mod utils;
+mod logging;
 mod ws;
 
 use std::{thread, time};
@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
-
 use hyper::{
     Body,
     body::to_bytes,
@@ -17,12 +16,11 @@ use hyper::{
 use route_recognizer::Params;
 use uuid::Uuid;
 use warp::{Filter, Rejection};
-use JNP2_Rust_Chatter::common::{ChatMessage, Client, Room};
+use JNP2_Rust_Chatter::common::*;
 use crate::router::Router;
-use crate::utils::{log_msg, setup_app_dir};
+use crate::logging::{log_msg, setup_app_dir};
 
 const WS_ADDR: &str = "127.0.0.1:8000/ws";
-const SERVER_SIGNATURE: &str = "SERVER"; //TODO: zarezerwowanie tego nicka
 
 type Response = hyper::Response<Body>;
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -34,7 +32,7 @@ type RoomMap = HashMap<Uuid, Room>;
 pub struct AppState {
     pub name: String,
     pub routing_map: Arc<Router>,
-    pub clients: ClientMap, //TODO: ujednolicić nazewnictwo user/client
+    pub clients: ClientMap,
     pub rooms: RoomMap,
 }
 
@@ -46,15 +44,15 @@ impl AppState {
             rooms: RoomMap::new(),
             routing_map: {
                 let mut router: Router = Router::new();
-                router.get("/health_check_handler", Box::new(handler::health_check_handler));
-                router.post("/send_msg", Box::new(handler::send_msg_handler));
-                router.post("/leave_room", Box::new(handler::leave_room_handler));
-                router.post("/exit_app", Box::new(handler::exit_app_handler));
-                router.post("/login", Box::new(handler::login_handler));
-                router.post("/get_room", Box::new(handler::get_room_handler));
-                router.post("/create_room", Box::new(handler::create_room_handler));
-                router.post("/join_room", Box::new(handler::join_room_handler));
-                router.post("/heartbeat", Box::new(handler::heartbeat_handler));
+                router.get(HEALTH_CHECK_ENDPOINT, Box::new(handler::health_check_handler));
+                router.post(SEND_MSG_ENDPOINT, Box::new(handler::send_msg_handler));
+                router.post(LEAVE_ROOM_ENDPOINT, Box::new(handler::leave_room_handler));
+                router.post(EXIT_APP_ENDPOINT, Box::new(handler::exit_app_handler));
+                router.post(LOGIN_ENDPOINT, Box::new(handler::login_handler));
+                router.post(GET_ROOM_ENDPOINT, Box::new(handler::get_room_handler));
+                router.post(CREATE_ROOM_ENDPOINT, Box::new(handler::create_room_handler));
+                router.post(JOIN_ROOM_ENDPOINT, Box::new(handler::join_room_handler));
+                router.post(HEARTBEAT_ENDPOINT, Box::new(handler::heartbeat_handler));
                 Arc::new(router)
             },
         }))
@@ -64,19 +62,19 @@ impl AppState {
         let msg_json = serde_json::to_string(&msg).unwrap();
         let room = self.rooms.get(&room_uuid).unwrap();
 
-        for user_uuid in &room.members {
-            let msg_for_user = Ok(warp::ws::Message::text(msg_json.clone()));
+        for client_uuid in &room.members {
+            let msg_for_client = Ok(warp::ws::Message::text(msg_json.clone()));
 
-            if let Some(user_conn) = self.clients.get(user_uuid){
-                user_conn
+            if let Some(client_conn) = self.clients.get(client_uuid){
+                client_conn
                     .sender
-                    .send(msg_for_user)
+                    .send(msg_for_client)
                     .expect("Sending message failed!");
             }
         }
     }
 
-    fn get_dead_users(&self) -> Vec<Uuid> {
+    fn get_dead_clients(&self) -> Vec<Uuid> {
         self.clients
             .iter()
             .filter(|(_, v)| !v.is_alive)
@@ -84,42 +82,42 @@ impl AppState {
             .collect::<Vec<_>>()
     }
 
-    fn get_user_rooms(&self, user_uuid: Uuid) -> Vec<Uuid> {
+    fn get_client_rooms(&self, client_uuid: Uuid) -> Vec<Uuid> {
         self.rooms
             .iter()
-            .filter(|(_, v)| v.members.contains(&user_uuid))
+            .filter(|(_, v)| v.members.contains(&client_uuid))
             .map(|(k, _)| *k)
             .collect::<Vec<_>>()
     }
 
-    fn remove_user(&mut self, uuid: Uuid) {
+    fn remove_client(&mut self, uuid: Uuid) {
         self.clients.remove(&uuid);
     }
 
-    fn disconnect_user_from_one(&mut self, user_uuid: Uuid, room_uuid: Uuid) {
+    fn disconnect_client_from_one(&mut self, client_uuid: Uuid, room_uuid: Uuid) {
         let goodbye_msg_content = format!(
             "{} has left the chat",
-            &self.clients.get(&user_uuid).unwrap().username
+            &self.clients.get(&client_uuid).unwrap().name
         );
         let goodbye_msg = ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
         println!("{}", goodbye_msg);
         self.send_to_room(&goodbye_msg, room_uuid);
-        self.rooms.get_mut(&room_uuid).unwrap().remove_user(user_uuid);
+        self.rooms.get_mut(&room_uuid).unwrap().remove_client(client_uuid);
         log_msg(&goodbye_msg, room_uuid).expect(&*format!("Error logging message for room {}", room_uuid));
     }
 
-    fn disconnect_user_from_all(&mut self, user_uuid: Uuid) {
+    fn disconnect_client_from_all(&mut self, client_uuid: Uuid) {
         let goodbye_msg_content = format!(
             "{} has left the chat",
-            &self.clients.get(&user_uuid).unwrap().username
+            &self.clients.get(&client_uuid).unwrap().name
         );
         let goodbye_msg = ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
         println!("{}", goodbye_msg);
 
-        let user_rooms = self.get_user_rooms(user_uuid);
-        for room in user_rooms {
+        let client_rooms = self.get_client_rooms(client_uuid);
+        for room in client_rooms {
             self.send_to_room(&goodbye_msg, room);
-            self.rooms.get_mut(&room).unwrap().remove_user(user_uuid);
+            self.rooms.get_mut(&room).unwrap().remove_client(client_uuid);
             log_msg(&goodbye_msg, room).expect(&*format!("Error logging message for room {}", room));
         }
     }
@@ -184,27 +182,20 @@ async fn route_and_handle(
 
 async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
     const KILL_TIMEOUT: u64 = 5000;
-    println!("Heartbeat service running");
+    eprintln!("Heartbeat service running!");
 
     loop {
         thread::sleep(time::Duration::from_millis(KILL_TIMEOUT));
-        let dead_users = app.lock().unwrap().get_dead_users();
+        let dead_clients = app.lock().unwrap().get_dead_clients();
 
         app.lock().unwrap().clients.values_mut()
-            .for_each(|user| user.is_alive = false); // flip users' status to dead
+            .for_each(|client| client.is_alive = false); // flip clients' status to dead
 
-        if dead_users.is_empty() {
-            println!("Everybody is alive");
-        }
-        else {
-            println!("Some clients died");
-            for dead_user_id in dead_users {
-                app.lock().unwrap().disconnect_user_from_all(dead_user_id);
-                // TODO: jak się to usunie, a user potem znowu włączy apkę, to skutkuje to
-                // wysłaniem przez serwer goodbye-message'a ponownie. Ja bym np stworzył jakiegoś
-                // enuma np UserState i tam trzymał 3 stany: Aktywny, Niekatywny i Martwy. No bo
-                // ustawienie z powrotem `is_alive = true` tutaj byłoby jakieś mega głupie
-                app.lock().unwrap().remove_user(dead_user_id);
+    if !dead_clients.is_empty() {
+            eprintln!("Some clients died!");
+            for dead_client_id in dead_clients {
+                app.lock().unwrap().disconnect_client_from_all(dead_client_id);
+                app.lock().unwrap().remove_client(dead_client_id);
             }
         }
     }

@@ -7,12 +7,10 @@ use JNP2_Rust_Chatter::common::ChatMessage;
 
 const APP_DIR: &str = ".chatter";
 const ROOM_LOGS_DIR: &str = "room_logs";
-//const USERS_DATA_DIR: &str = "users_data";
-//const ROOMS_DATA_DIR: &str = "rooms_data";
 
 fn app_dir_path() -> PathBuf {
     dirs::home_dir()
-        .expect("Cannot locate user's home directory")
+        .expect("Cannot locate home directory")
         .join(APP_DIR)
 }
 

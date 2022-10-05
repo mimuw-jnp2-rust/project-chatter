@@ -6,7 +6,7 @@ use hyper::Method;
 use route_recognizer::{Match, Params, Router as InternalRouter};
 
 use crate::{Context, Response};
-use crate::handler::not_found_handler;
+use crate::handler::not_found_resp;
 
 #[async_trait]
 pub trait Handler: Send + Sync + 'static {
@@ -73,7 +73,7 @@ impl Router {
             }
         } else {
             RouterMatch {
-                handler: &not_found_handler,
+                handler: &|_| async move { not_found_resp() },
                 params: Params::new(),
             }
         }
