@@ -1,24 +1,24 @@
 mod handler;
-mod router;
 mod logging;
+mod router;
 mod ws;
 
-use std::{thread, time};
+use crate::logging::{log_msg, setup_app_dir};
+use crate::router::Router;
+use hyper::{
+    body::to_bytes,
+    service::{make_service_fn, service_fn},
+    Body, Request, Server,
+};
+use route_recognizer::Params;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
-use hyper::{
-    Body,
-    body::to_bytes,
-    Request, Server, service::{make_service_fn, service_fn},
-};
-use route_recognizer::Params;
+use std::{thread, time};
 use uuid::Uuid;
 use warp::{Filter, Rejection};
 use JNP2_Rust_Chatter::common::*;
-use crate::router::Router;
-use crate::logging::{log_msg, setup_app_dir};
 
 const WS_ADDR: &str = "127.0.0.1:8000/ws";
 
@@ -44,7 +44,10 @@ impl AppState {
             rooms: RoomMap::new(),
             routing_map: {
                 let mut router: Router = Router::new();
-                router.get(HEALTH_CHECK_ENDPOINT, Box::new(handler::health_check_handler));
+                router.get(
+                    HEALTH_CHECK_ENDPOINT,
+                    Box::new(handler::health_check_handler),
+                );
                 router.post(SEND_MSG_ENDPOINT, Box::new(handler::send_msg_handler));
                 router.post(LEAVE_ROOM_ENDPOINT, Box::new(handler::leave_room_handler));
                 router.post(EXIT_APP_ENDPOINT, Box::new(handler::exit_app_handler));
@@ -65,7 +68,7 @@ impl AppState {
         for client_uuid in &room.members {
             let msg_for_client = Ok(warp::ws::Message::text(msg_json.clone()));
 
-            if let Some(client_conn) = self.clients.get(client_uuid){
+            if let Some(client_conn) = self.clients.get(client_uuid) {
                 client_conn
                     .sender
                     .send(msg_for_client)
@@ -102,8 +105,12 @@ impl AppState {
         let goodbye_msg = ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
         println!("{}", goodbye_msg);
         self.send_to_room(&goodbye_msg, room_uuid);
-        self.rooms.get_mut(&room_uuid).unwrap().remove_client(client_uuid);
-        log_msg(&goodbye_msg, room_uuid).expect(&*format!("Error logging message for room {}", room_uuid));
+        self.rooms
+            .get_mut(&room_uuid)
+            .unwrap()
+            .remove_client(client_uuid);
+        log_msg(&goodbye_msg, room_uuid)
+            .expect(&*format!("Error logging message for room {}", room_uuid));
     }
 
     fn disconnect_client_from_all(&mut self, client_uuid: Uuid) {
@@ -117,8 +124,12 @@ impl AppState {
         let client_rooms = self.get_client_rooms(client_uuid);
         for room in client_rooms {
             self.send_to_room(&goodbye_msg, room);
-            self.rooms.get_mut(&room).unwrap().remove_client(client_uuid);
-            log_msg(&goodbye_msg, room).expect(&*format!("Error logging message for room {}", room));
+            self.rooms
+                .get_mut(&room)
+                .unwrap()
+                .remove_client(client_uuid);
+            log_msg(&goodbye_msg, room)
+                .expect(&*format!("Error logging message for room {}", room));
         }
     }
 }
@@ -188,13 +199,18 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
         thread::sleep(time::Duration::from_millis(KILL_TIMEOUT));
         let dead_clients = app.lock().unwrap().get_dead_clients();
 
-        app.lock().unwrap().clients.values_mut()
+        app.lock()
+            .unwrap()
+            .clients
+            .values_mut()
             .for_each(|client| client.is_alive = false); // flip clients' status to dead
 
-    if !dead_clients.is_empty() {
+        if !dead_clients.is_empty() {
             eprintln!("Some clients died!");
             for dead_client_id in dead_clients {
-                app.lock().unwrap().disconnect_client_from_all(dead_client_id);
+                app.lock()
+                    .unwrap()
+                    .disconnect_client_from_all(dead_client_id);
                 app.lock().unwrap().remove_client(dead_client_id);
             }
         }

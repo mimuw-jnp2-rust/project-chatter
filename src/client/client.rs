@@ -1,5 +1,6 @@
-use std::{thread};
-use std::io::{stdin};
+use anyhow::Context;
+use std::io::stdin;
+use std::thread;
 use std::time::Duration;
 
 use futures::{SinkExt, StreamExt};
@@ -11,7 +12,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use tungstenite::protocol::Message as TungsteniteMsg;
 use uuid::Uuid;
-use JNP2_Rust_Chatter::common::{*, ReqData::*};
+use JNP2_Rust_Chatter::common::{ReqData::*, *};
 
 const ADDR: &str = "http://0.0.0.0:8080";
 const WS_ADDR: &str = "ws://127.0.0.1:8000/ws";
@@ -41,33 +42,53 @@ fn get_nonempty_line(what: &str) -> String {
     let invalid = format!("Invalid {}. Please try again", what);
     loop {
         match get_line(&*prompt) {
-            Ok(res) =>
+            Ok(res) => {
                 if res.is_empty() || res == SERVER_SIGNATURE {
                     println!("{}", invalid);
                 } else {
                     break res;
                 }
-            Err(err) => println!("Error: {}", err)
+            }
+            Err(err) => println!("Error: {}", err),
         }
     }
+}
+
+fn get_header<'a, T>(resp: &'a Response, header: &'a str) -> anyhow::Result<T>
+where
+    T: serde::de::Deserialize<'a>,
+{
+    let header_value = resp
+        .headers()
+        .get(header)
+        .context(format!("No {}  was found in the request!", header))?;
+    Ok(serde_json::from_slice(header_value.as_bytes())?)
+}
+
+async fn post<T>(
+    reqwest_client: &ReqwestClient,
+    endpoint: &str,
+    body: &T,
+) -> anyhow::Result<Response>
+where
+    T: ?Sized + serde::ser::Serialize,
+{
+    let data = serde_json::to_string(&body)?;
+    let resp = reqwest_client
+        .post(ADDR.to_string() + endpoint)
+        .body(data)
+        .send()
+        .await?;
+    Ok(resp)
 }
 
 async fn request_login(
     client_name: &str,
     reqwest_client: &ReqwestClient,
 ) -> anyhow::Result<Option<Uuid>> {
-    let data = LoginData(ClientName(client_name.to_string()));
-    let data = serde_json::to_string(&data)?;
-    let resp = reqwest_client
-        .post(ADDR.to_string() + LOGIN_ENDPOINT)
-        .body(data)
-        .send()
-        .await?;
-    let client_uuid = resp
-        .headers()
-        .get(CLIENT_UUID_HEADER)
-        .expect("No client_uuid header in server response");
-    Ok(serde_json::from_slice(client_uuid.as_bytes())?)
+    let body = LoginData(ClientName(client_name.to_string()));
+    let resp = post(&reqwest_client, LOGIN_ENDPOINT, &body).await?;
+    get_header(&resp, CLIENT_UUID_HEADER)
 }
 
 async fn request_registration(
@@ -76,53 +97,34 @@ async fn request_registration(
     ws_stream: &mut WSStream,
 ) -> Uuid {
     let fail_msg = "Error in registration!";
-    let client_data = RegistrationData(ClientName(client_name.to_string()));
-    let client_data = serde_json::to_string(&client_data).unwrap();
+    let body = RegistrationData(ClientName(client_name.to_string()));
+    let body = serde_json::to_string(&body).unwrap();
     ws_stream
-        .send(TungsteniteMsg::Text(client_data))
+        .send(TungsteniteMsg::Text(body))
         .await
         .expect(fail_msg);
-    let uuid = request_login(client_name, reqwest_client)
+    request_login(client_name, reqwest_client)
         .await
         .expect(fail_msg)
-        .expect(fail_msg);
-    uuid
+        .expect(fail_msg)
 }
 
 async fn request_get_room(
     room_name: &str,
     reqwest_client: &ReqwestClient,
 ) -> anyhow::Result<Option<Uuid>> {
-    let data = GetRoomData(RoomName(room_name.to_string()));
-    let data = serde_json::to_string(&data)?;
-    let resp = reqwest_client
-        .post(ADDR.to_string() + GET_ROOM_ENDPOINT)
-        .body(data)
-        .send()
-        .await?;
-    let room_uuid = resp
-        .headers()
-        .get(ROOM_UUID_HEADER)
-        .expect("No room_uuid header in server response");
-    Ok(serde_json::from_slice(room_uuid.as_bytes())?)
+    let body = GetRoomData(RoomName(room_name.to_string()));
+    let resp = post(&reqwest_client, GET_ROOM_ENDPOINT, &body).await?;
+    get_header(&resp, ROOM_UUID_HEADER)
 }
 
 async fn request_create_room(
     room_name: &str,
     reqwest_client: &ReqwestClient,
 ) -> anyhow::Result<Uuid> {
-    let data = CreateRoomData(RoomName(room_name.to_string()));
-    let data = serde_json::to_string(&data)?;
-    let resp = reqwest_client
-        .post(ADDR.to_string() + CREATE_ROOM_ENDPOINT)
-        .body(data)
-        .send()
-        .await?;
-    let room_uuid = resp
-        .headers()
-        .get(ROOM_UUID_HEADER)
-        .expect("No room_uuid header in server response");
-    Ok(serde_json::from_slice(room_uuid.as_bytes())?)
+    let body = CreateRoomData(RoomName(room_name.to_string()));
+    let resp = post(&reqwest_client, CREATE_ROOM_ENDPOINT, &body).await?;
+    get_header(&resp, ROOM_UUID_HEADER)
 }
 
 async fn request_join_room(
@@ -131,25 +133,20 @@ async fn request_join_room(
     room_uuid: Uuid,
     reqwest_client: &ReqwestClient,
 ) -> anyhow::Result<bool> {
-    let data = JoinRoomData(ClientName(client_name.to_string()), ClientUuid(client_uuid), RoomUuid(room_uuid));
-    let data = serde_json::to_string(&data)?;
-    let resp = reqwest_client
-        .post(ADDR.to_string() + JOIN_ROOM_ENDPOINT)
-        .body(data)
-        .send()
-        .await?;
-    let success = resp
-        .headers()
-        .get(SUCCESS_HEADER)
-        .expect("No success header in server response");
-    Ok(serde_json::from_slice(success.as_bytes())?)
+    let body = JoinRoomData(
+        ClientName(client_name.to_string()),
+        ClientUuid(client_uuid),
+        RoomUuid(room_uuid),
+    );
+    let resp = post(&reqwest_client, JOIN_ROOM_ENDPOINT, &body).await?;
+    get_header(&resp, SUCCESS_HEADER)
 }
 
 async fn login(reqwest_client: &ReqwestClient, ws_stream: &mut WSStream) -> (String, Uuid) {
     let client_name = get_nonempty_line("username");
     let client_uuid = match request_login(&client_name, reqwest_client)
         .await
-        .expect("Error during login")
+        .expect("Error during login!")
     {
         Some(uuid) => {
             println!("Welcome back, {}", &client_name);
@@ -167,14 +164,14 @@ async fn get_room(reqwest_client: &ReqwestClient) -> (String, Uuid) {
     let room_name = get_nonempty_line("room name");
     let room_uuid = match request_get_room(&room_name, reqwest_client)
         .await
-        .expect("Error finding room")
+        .expect("Error finding room!")
     {
         Some(uuid) => uuid,
         None => {
             println!("Created room '{}'", &room_name);
             request_create_room(&room_name, reqwest_client)
                 .await
-                .expect("Error creating room")
+                .expect("Error creating room!")
         }
     };
     (room_name, room_uuid)
@@ -189,7 +186,7 @@ async fn join_room(
 ) {
     let success = request_join_room(client_uuid, client_name, room_uuid, reqwest_client)
         .await
-        .expect("Error joining room");
+        .expect("Error joining room!");
     if success {
         println!("Joined room '{}'", room_name);
     } else {
@@ -239,9 +236,9 @@ async fn exit_app(reqwest_client: &ReqwestClient, client_uuid: Uuid) -> anyhow::
 }
 
 async fn keep_alive(client_uuid: Uuid) {
-    println!("{}", client_uuid);
     thread::sleep(Duration::from_millis(2000));
-    //panic!("siema eniu");
+    panic!("siema eniu");
+
     // const HEARTBEAT_TIMEOUT: u64 = 1000;
     // let heartbeat_data = HeartbeatData(ClientUuid(client_uuid));
     // let heartbeat_str = serde_json::to_string(&heartbeat_data).expect("Parsing heartbeat failed");
@@ -265,7 +262,7 @@ async fn chat_client() {
     let reqwest_client = ReqwestClient::new();
     let (mut ws_stream, _) = connect_async(WS_ADDR)
         .await
-        .expect("Failed to connect to the WS server");
+        .expect("Failed to connect to the WS server!");
 
     let (client_name, client_uuid) = login(&reqwest_client, &mut ws_stream).await; //TODO: check if client already exists, maybe check for a passwd
     let keep_alive_handle = tokio::spawn(keep_alive(client_uuid));

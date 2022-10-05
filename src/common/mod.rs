@@ -1,6 +1,6 @@
-use std::collections::HashSet;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fmt::{self, Display};
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
@@ -20,7 +20,7 @@ pub const LOGIN_ENDPOINT: &str = "/login";
 pub const GET_ROOM_ENDPOINT: &str = "/get_room";
 pub const CREATE_ROOM_ENDPOINT: &str = "/create_room";
 pub const JOIN_ROOM_ENDPOINT: &str = "/join_room";
-pub const HEARTBEAT_ENDPOINT:&str = "/heartbeat";
+pub const HEARTBEAT_ENDPOINT: &str = "/heartbeat";
 
 #[derive(Serialize, Deserialize)]
 pub struct ClientUuid(pub Uuid);
@@ -48,7 +48,7 @@ pub enum ReqData {
 pub struct ChatMessage {
     pub author: String,
     pub contents: String,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: DateTime<Local>,
 }
 
 impl Display for ChatMessage {
@@ -62,7 +62,7 @@ impl ChatMessage {
         ChatMessage {
             author: author.to_string(),
             contents: contents.to_string(),
-            timestamp: Utc::now(),
+            timestamp: Local::now(),
         }
     }
 }

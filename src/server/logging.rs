@@ -43,10 +43,7 @@ pub fn setup_app_dir() -> io::Result<()> {
 // żeby zminimalizować obciążenie cache'a
 pub fn log_msg(msg: &ChatMessage, room_uuid: Uuid) -> io::Result<()> {
     let path = room_log_path(room_uuid).with_extension("log");
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)?;
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
     writeln!(file, "{}", msg)?;
     Ok(())
 }

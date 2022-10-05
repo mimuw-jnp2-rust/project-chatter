@@ -5,8 +5,8 @@ use futures::future::Future;
 use hyper::Method;
 use route_recognizer::{Match, Params, Router as InternalRouter};
 
-use crate::{Context, Response};
 use crate::handler::not_found_resp;
+use crate::{Context, Response};
 
 #[async_trait]
 pub trait Handler: Send + Sync + 'static {
