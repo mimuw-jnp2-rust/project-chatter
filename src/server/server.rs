@@ -46,16 +46,16 @@ impl AppState {
                 let mut router: Router = Router::new();
                 router.get(
                     HEALTH_CHECK_ENDPOINT,
-                    Box::new(handler::health_check_handler),
+                    Box::new(handler::handle_health_check),
                 );
-                router.post(SEND_MSG_ENDPOINT, Box::new(handler::send_msg_handler));
-                router.post(LEAVE_ROOM_ENDPOINT, Box::new(handler::leave_room_handler));
-                router.post(EXIT_APP_ENDPOINT, Box::new(handler::exit_app_handler));
-                router.post(LOGIN_ENDPOINT, Box::new(handler::login_handler));
-                router.post(GET_ROOM_ENDPOINT, Box::new(handler::get_room_handler));
-                router.post(CREATE_ROOM_ENDPOINT, Box::new(handler::create_room_handler));
-                router.post(JOIN_ROOM_ENDPOINT, Box::new(handler::join_room_handler));
-                router.post(HEARTBEAT_ENDPOINT, Box::new(handler::heartbeat_handler));
+                router.post(SEND_MSG_ENDPOINT, Box::new(handler::handle_send_msg));
+                router.post(LEAVE_ROOM_ENDPOINT, Box::new(handler::handle_leave_room));
+                router.post(EXIT_APP_ENDPOINT, Box::new(handler::handle_exit_app));
+                router.post(LOGIN_ENDPOINT, Box::new(handler::handle_login));
+                router.post(GET_ROOM_ENDPOINT, Box::new(handler::handle_get_room));
+                router.post(CREATE_ROOM_ENDPOINT, Box::new(handler::handle_create_room));
+                router.post(JOIN_ROOM_ENDPOINT, Box::new(handler::handle_join_room));
+                router.post(HEARTBEAT_ENDPOINT, Box::new(handler::handle_heartbeat));
                 Arc::new(router)
             },
         }))
@@ -223,7 +223,7 @@ async fn run_ws(app: Arc<Mutex<AppState>>) {
     let ws_route = warp::path("ws")
         .and(warp::ws())
         .and(warp::any().map(move || app.clone()))
-        .and_then(handler::registration_handler);
+        .and_then(handler::handle_registration);
 
     let routes = ws_route.with(warp::cors().allow_any_origin());
     println!("WS open on {}", WS_ADDR);

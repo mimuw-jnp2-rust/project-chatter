@@ -35,7 +35,7 @@ pub fn not_found_resp() -> Response {
         .unwrap()
 }
 
-pub async fn health_check_handler(ctx: Context) -> Response {
+pub async fn handle_health_check(ctx: Context) -> Response {
     let app = ctx.app_state.lock().unwrap();
     hyper::Response::builder()
         .status(StatusCode::OK)
@@ -43,14 +43,14 @@ pub async fn health_check_handler(ctx: Context) -> Response {
         .unwrap()
 }
 
-pub async fn registration_handler(
+pub async fn handle_registration(
     ws: warp::ws::Ws,
     app: Arc<Mutex<AppState>>,
 ) -> ResultWS<impl Reply> {
     Ok(ws.on_upgrade(move |socket| ws::new_client_connection(socket, app)))
 }
 
-pub async fn login_handler(mut ctx: Context) -> Response {
+pub async fn handle_login(mut ctx: Context) -> Response {
     match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
         Ok(v) => match v {
@@ -83,7 +83,7 @@ pub async fn login_handler(mut ctx: Context) -> Response {
     }
 }
 
-pub async fn create_room_handler(mut ctx: Context) -> Response {
+pub async fn handle_create_room(mut ctx: Context) -> Response {
     match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
         Ok(v) => match v {
@@ -110,7 +110,7 @@ pub async fn create_room_handler(mut ctx: Context) -> Response {
     }
 }
 
-pub async fn get_room_handler(mut ctx: Context) -> Response {
+pub async fn handle_get_room(mut ctx: Context) -> Response {
     match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
         Ok(v) => match v {
@@ -143,7 +143,7 @@ pub async fn get_room_handler(mut ctx: Context) -> Response {
     }
 }
 
-pub async fn join_room_handler(mut ctx: Context) -> Response {
+pub async fn handle_join_room(mut ctx: Context) -> Response {
     match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
         Ok(v) => match v {
@@ -182,7 +182,7 @@ pub async fn join_room_handler(mut ctx: Context) -> Response {
     }
 }
 
-pub async fn send_msg_handler(mut ctx: Context) -> Response {
+pub async fn handle_send_msg(mut ctx: Context) -> Response {
     match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
         Ok(v) => match v {
@@ -202,11 +202,12 @@ pub async fn send_msg_handler(mut ctx: Context) -> Response {
     }
 }
 
-pub async fn leave_room_handler(mut ctx: Context) -> Response {
+pub async fn handle_leave_room(mut ctx: Context) -> Response {
     match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
         Ok(v) => match v {
-            ReqData::LeaveRoomData(client_uuid, room_uuid) => {
+            ReqData::LeaveRoomData(room_uuid, client_uuid) => {
+                println!("HELLO 2");
                 ctx.app_state
                     .clone()
                     .lock()
@@ -219,7 +220,7 @@ pub async fn leave_room_handler(mut ctx: Context) -> Response {
     }
 }
 
-pub async fn exit_app_handler(mut ctx: Context) -> Response {
+pub async fn handle_exit_app(mut ctx: Context) -> Response {
     match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
         Ok(v) => match v {
@@ -236,7 +237,7 @@ pub async fn exit_app_handler(mut ctx: Context) -> Response {
     }
 }
 
-pub async fn heartbeat_handler(mut ctx: Context) -> Response {
+pub async fn handle_heartbeat(mut ctx: Context) -> Response {
     match ctx.body_json().await {
         Err(e) => bad_json_resp(e),
         Ok(v) => match v {
