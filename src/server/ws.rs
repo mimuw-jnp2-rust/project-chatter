@@ -4,7 +4,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 use warp::ws::WebSocket;
 
-use JNP2_Rust_Chatter::common::{Client, ReqData};
+use JNP2_Rust_Chatter::common::{Client, ClientUuid, ReqData};
 
 use crate::AppState;
 use crate::Arc;
@@ -40,7 +40,7 @@ pub async fn new_client_connection(ws: WebSocket, app: Arc<Mutex<AppState>>) {
                     app.lock()
                         .unwrap()
                         .clients
-                        .insert(Uuid::new_v4(), new_client);
+                        .insert(ClientUuid(Uuid::new_v4()), new_client);
                 }
                 _ => eprintln!("Invalid client registration request"),
             },

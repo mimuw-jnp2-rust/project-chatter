@@ -23,20 +23,19 @@ pub const JOIN_ROOM_ENDPOINT: &str = "/join_room";
 pub const HEARTBEAT_ENDPOINT: &str = "/heartbeat";
 
 pub const ADDR_HTTP: &str = "127.0.0.1:8080";
-pub const ADDR_WS:   &str = "127.0.0.1:8000";
+pub const ADDR_WS: &str = "127.0.0.1:8000";
 pub const LOCALHOST: &str = "127.0.0.1";
 
 pub const PORT_HTTP: &str = ":8080";
-pub const PORT_WS:   &str = ":8000";
+pub const PORT_WS: &str = ":8000";
 
-
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ClientUuid(pub Uuid);
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct RoomUuid(pub Uuid);
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct ClientName(pub String);
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct RoomName(pub String);
 
 #[derive(Serialize, Deserialize)]
@@ -76,32 +75,36 @@ impl ChatMessage {
 }
 
 pub struct Room {
-    pub name: String,
-    pub uuid: Uuid,
-    pub members: HashSet<Uuid>,
+    pub name: RoomName,
+    pub uuid: RoomUuid,
+    pub members: HashSet<ClientUuid>,
 }
 
 impl Room {
     pub fn new(name: &str) -> Self {
         Room {
-            name: name.to_string(),
-            uuid: Uuid::new_v4(),
+            name: RoomName(name.to_string()),
+            uuid: RoomUuid(Uuid::new_v4()),
             members: HashSet::new(),
         }
     }
 
-    pub fn add_client(&mut self, client_uuid: Uuid) {
+    pub fn add(&mut self, client_uuid: ClientUuid) {
         self.members.insert(client_uuid);
     }
 
-    pub fn remove_client(&mut self, client_uuid: Uuid) {
+    pub fn remove(&mut self, client_uuid: ClientUuid) {
         self.members.remove(&client_uuid);
+    }
+
+    pub fn contains(&self, client_uuid: &ClientUuid) -> bool {
+        self.members.contains(client_uuid)
     }
 }
 
 pub struct Client {
     pub is_alive: bool,
-    pub name: String,
+    pub name: ClientName,
     pub sender: WSSender,
 }
 
@@ -109,16 +112,18 @@ impl Client {
     pub fn new(sender: WSSender, name: &str) -> Self {
         Client {
             is_alive: true,
-            name: name.to_string(),
+            name: ClientName(name.to_string()),
             sender,
         }
     }
 }
+
 pub enum Protocol {
-    HTTP,WS
+    HTTP,
+    WS,
 }
 
-pub fn get_addr_str(prot : Protocol) -> String{
+pub fn get_addr_str(prot: Protocol) -> String {
     let args: Vec<String> = std::env::args().collect();
 
     let addr = if args.len() == 1 {
@@ -129,6 +134,6 @@ pub fn get_addr_str(prot : Protocol) -> String{
 
     match prot {
         Protocol::HTTP => addr + PORT_HTTP,
-        Protocol::WS =>   addr + PORT_WS,
+        Protocol::WS => addr + PORT_WS,
     }
 }

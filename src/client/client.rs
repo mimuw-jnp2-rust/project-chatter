@@ -15,7 +15,7 @@ use tungstenite::protocol::Message as TungsteniteMsg;
 use uuid::Uuid;
 use JNP2_Rust_Chatter::common::{ReqData::*, *};
 
-const CMD_EXIT:  &str = "/exit"; // exits the entire app
+const CMD_EXIT: &str = "/exit"; // exits the entire app
 const CMD_LOBBY: &str = "/lobby"; // goes back to the lobby
 
 type WSStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -55,7 +55,7 @@ fn get_nonempty_line(what: &str) -> String {
 
 fn get_header<'a, T>(resp: &'a Response, header: &'a str) -> anyhow::Result<T>
 where
-    T: serde::de::Deserialize<'a>,
+    T: serde::Deserialize<'a>,
 {
     let header_value = resp
         .headers()
@@ -70,7 +70,7 @@ async fn post<T>(
     body: &T,
 ) -> anyhow::Result<Response>
 where
-    T: ?Sized + serde::ser::Serialize,
+    T: ?Sized + serde::Serialize,
 {
     let data = serde_json::to_string(&body)?;
     let resp = reqwest_client
@@ -216,12 +216,11 @@ async fn do_join_room(
 }
 
 async fn keep_alive(client_uuid: Uuid) {
-
     const HEARTBEAT_TIMEOUT: u64 = 2000;
     let heartbeat_data = HeartbeatData(ClientUuid(client_uuid));
     let heartbeat_str = serde_json::to_string(&heartbeat_data).expect("Parsing heartbeat failed");
     let client = ReqwestClient::new();
-    
+
     loop {
         thread::sleep(Duration::from_millis(HEARTBEAT_TIMEOUT));
         let heartbeat_str = heartbeat_str.clone();
@@ -247,6 +246,12 @@ async fn chat_client() {
 
     let (client_name, client_uuid) = register_or_login(&reqwest_client, &mut ws_stream).await;
     let keep_alive_handle = tokio::spawn(keep_alive(client_uuid));
+
+    let check_resp = |resp: Result<Response, _>| {
+        if resp.expect("Failed to send message!").status() != StatusCode::OK {
+            panic!("Failed to send message!");
+        }
+    };
 
     loop {
         if let Some((room_name, room_uuid)) = do_get_room(&reqwest_client).await {
@@ -277,9 +282,8 @@ async fn chat_client() {
 
             loop {
                 if keep_alive_handle.is_finished() {
-                    return
+                    return;
                 }
-
                 tokio::select! {
                     ws_msg = ws_stream.next() => {
                         match ws_msg {
@@ -303,25 +307,16 @@ async fn chat_client() {
                         match stdin_msg {
                             Some(msg) => {
                                 let msg = ChatMessage::new(&client_name, &msg);
-                                let mut should_break = false;
-                                let mut should_return = false;
-                                let response =
-                                    if msg.contents == CMD_EXIT {
-                                        should_return = true;
-                                        ws_stream.close(None).await.expect("Closing ws stream failed!");
-                                        exit_app(&reqwest_client, client_uuid).await
-                                    } else if msg.contents == CMD_LOBBY {
-                                        should_break = true;
-                                        leave_room(&reqwest_client, client_uuid, room_uuid).await
-                                    } else {
-                                        send_msg(&reqwest_client, msg, room_uuid).await
-                                    };
-
-                                if response.expect("Failed to send message!").status() != StatusCode::OK {
-                                    panic!("Failed to send message!");
-                                }
-                                if should_break { break; }
-                                if should_return { return; }
+                                if msg.contents == CMD_EXIT {
+                                    ws_stream.close(None).await.expect("Closing ws stream failed!");
+                                    check_resp(exit_app(&reqwest_client, client_uuid).await);
+                                    return;
+                                } else if msg.contents == CMD_LOBBY {
+                                    check_resp(leave_room(&reqwest_client, client_uuid, room_uuid).await);
+                                    break;
+                                } else {
+                                    check_resp(send_msg(&reqwest_client, msg, room_uuid).await);
+                                };
                             },
                             None => return
                         }

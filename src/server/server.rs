@@ -16,7 +16,6 @@ use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::{thread, time};
-use uuid::Uuid;
 use warp::{Filter, Rejection};
 use JNP2_Rust_Chatter::common::*;
 
@@ -24,8 +23,8 @@ type Response = hyper::Response<Body>;
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 type ResultWS<T> = Result<T, Rejection>;
 
-type ClientMap = HashMap<Uuid, Client>;
-type RoomMap = HashMap<Uuid, Room>;
+type ClientMap = HashMap<ClientUuid, Client>;
+type RoomMap = HashMap<RoomUuid, Room>;
 
 pub struct AppState {
     pub name: String,
@@ -59,7 +58,7 @@ impl AppState {
         }))
     }
 
-    fn send_to_room(&self, msg: &ChatMessage, room_uuid: Uuid) {
+    fn send_to_room(&self, msg: &ChatMessage, room_uuid: RoomUuid) {
         let msg_json = serde_json::to_string(&msg).unwrap();
         let room = self.rooms.get(&room_uuid).unwrap();
 
@@ -75,7 +74,7 @@ impl AppState {
         }
     }
 
-    fn get_dead_clients(&self) -> Vec<Uuid> {
+    fn get_dead_clients(&self) -> Vec<ClientUuid> {
         self.clients
             .iter()
             .filter(|(_, v)| !v.is_alive)
@@ -83,51 +82,45 @@ impl AppState {
             .collect::<Vec<_>>()
     }
 
-    fn get_client_rooms(&self, client_uuid: Uuid) -> Vec<Uuid> {
+    fn get_client_rooms(&self, client_uuid: ClientUuid) -> Vec<RoomUuid> {
         self.rooms
             .iter()
-            .filter(|(_, v)| v.members.contains(&client_uuid))
+            .filter(|(_, v)| v.contains(&client_uuid))
             .map(|(k, _)| *k)
             .collect::<Vec<_>>()
     }
 
-    fn remove_client(&mut self, uuid: Uuid) {
-        self.clients.remove(&uuid);
+    fn remove(&mut self, client_uuid: ClientUuid) {
+        self.clients.remove(&client_uuid);
     }
 
-    fn disconnect_client_from_one(&mut self, client_uuid: Uuid, room_uuid: Uuid) {
+    fn disconnect_client_from_one(&mut self, client_uuid: ClientUuid, room_uuid: RoomUuid) {
         let goodbye_msg_content = format!(
             "{} has left the chat",
-            &self.clients.get(&client_uuid).unwrap().name
+            &self.clients.get(&client_uuid).unwrap().name.0
         );
         let goodbye_msg = ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
-        println!("{}", goodbye_msg);
         self.send_to_room(&goodbye_msg, room_uuid);
-        self.rooms
-            .get_mut(&room_uuid)
-            .unwrap()
-            .remove_client(client_uuid);
-        log_msg(&goodbye_msg, room_uuid)
-            .expect(&*format!("Error logging message for room {}", room_uuid));
+        self.rooms.get_mut(&room_uuid).unwrap().remove(client_uuid);
+        if log_msg(&goodbye_msg, room_uuid).is_err() {
+            eprintln!("Error logging message for room {}", room_uuid.0);
+        }
     }
 
-    fn disconnect_client_from_all(&mut self, client_uuid: Uuid) {
+    fn disconnect_client_from_all(&mut self, client_uuid: ClientUuid) {
         let goodbye_msg_content = format!(
             "{} has left the chat",
-            &self.clients.get(&client_uuid).unwrap().name
+            &self.clients.get(&client_uuid).unwrap().name.0
         );
         let goodbye_msg = ChatMessage::new(SERVER_SIGNATURE, &*goodbye_msg_content);
-        println!("{}", goodbye_msg);
 
         let client_rooms = self.get_client_rooms(client_uuid);
         for room in client_rooms {
             self.send_to_room(&goodbye_msg, room);
-            self.rooms
-                .get_mut(&room)
-                .unwrap()
-                .remove_client(client_uuid);
-            log_msg(&goodbye_msg, room)
-                .expect(&*format!("Error logging message for room {}", room));
+            self.rooms.get_mut(&room).unwrap().remove(client_uuid);
+            if log_msg(&goodbye_msg, room).is_err() {
+                eprintln!("Error logging message for room {}", room.0);
+            }
         }
     }
 }
@@ -155,7 +148,7 @@ impl Context {
             _ => {
                 let body = to_bytes(self.req.body_mut()).await?;
                 self.body_bytes = Some(body);
-                self.body_bytes.as_ref().expect("body_bytes was set above")
+                self.body_bytes.as_ref().unwrap()
             }
         };
         Ok(serde_json::from_slice(body_bytes)?)
@@ -166,7 +159,7 @@ impl Context {
 async fn main() {
     let app = AppState::new();
 
-    setup_app_dir().expect("App's directory setup failed");
+    setup_app_dir().expect("App's directory setup failed!");
     let http = tokio::spawn(run_http(app.clone()));
     let ws = tokio::spawn(run_ws(app.clone()));
     let heartbeat = tokio::spawn(run_heartbeat_service(app.clone()));
@@ -191,7 +184,7 @@ async fn route_and_handle(
 
 async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
     const KILL_TIMEOUT: u64 = 5000;
-    eprintln!("Heartbeat service running!");
+    println!("Heartbeat service running!");
 
     loop {
         thread::sleep(time::Duration::from_millis(KILL_TIMEOUT));
@@ -209,18 +202,20 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
                 app.lock()
                     .unwrap()
                     .disconnect_client_from_all(dead_client_id);
-                app.lock().unwrap().remove_client(dead_client_id);
+                app.lock().unwrap().remove(dead_client_id);
             }
         }
     }
 }
 
-fn build_addr(addr_str: String) -> std::net::SocketAddr {
-    addr_str.as_str().parse::<SocketAddr>().expect("Address creation failed")
+fn build_addr(addr_str: String) -> SocketAddr {
+    addr_str
+        .as_str()
+        .parse::<SocketAddr>()
+        .expect("Address creation failed!")
 }
 
 async fn run_ws(app: Arc<Mutex<AppState>>) {
-
     let addr = build_addr(get_addr_str(Protocol::WS));
 
     let ws_route = warp::ws()
@@ -229,13 +224,10 @@ async fn run_ws(app: Arc<Mutex<AppState>>) {
 
     let routes = ws_route.with(warp::cors().allow_any_origin());
     println!("WS open on {}", addr);
-    warp::serve(routes)
-    .run(addr)
-    .await;
+    warp::serve(routes).run(addr).await;
 }
 
 async fn run_http(app: Arc<Mutex<AppState>>) {
-
     let new_service = make_service_fn(move |_| {
         let app_capture = app.clone();
         async {

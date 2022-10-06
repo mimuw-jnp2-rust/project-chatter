@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use futures::future::Future;
 use hyper::Method;
+use reqwest::StatusCode;
 use route_recognizer::{Match, Params, Router as InternalRouter};
 
-use crate::handler::not_found_resp;
+use crate::handler::response_with_code;
 use crate::{Context, Response};
 
 #[async_trait]
@@ -73,7 +74,7 @@ impl Router {
             }
         } else {
             RouterMatch {
-                handler: &|_| async move { not_found_resp() },
+                handler: &|_| async move { response_with_code(StatusCode::NOT_FOUND) },
                 params: Params::new(),
             }
         }
