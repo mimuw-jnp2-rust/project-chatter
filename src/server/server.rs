@@ -20,8 +20,6 @@ use uuid::Uuid;
 use warp::{Filter, Rejection};
 use JNP2_Rust_Chatter::common::*;
 
-const WS_ADDR: &str = "127.0.0.1:8000/ws";
-
 type Response = hyper::Response<Body>;
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 type ResultWS<T> = Result<T, Rejection>;
@@ -217,21 +215,26 @@ async fn run_heartbeat_service(app: Arc<Mutex<AppState>>) {
     }
 }
 
-async fn run_ws(app: Arc<Mutex<AppState>>) {
-    println!("Preparing WS...");
+fn build_addr(addr_str: String) -> std::net::SocketAddr {
+    addr_str.as_str().parse::<SocketAddr>().expect("Address creation failed")
+}
 
-    let ws_route = warp::path("ws")
-        .and(warp::ws())
+async fn run_ws(app: Arc<Mutex<AppState>>) {
+
+    let addr = build_addr(get_addr_str(Protocol::WS));
+
+    let ws_route = warp::ws()
         .and(warp::any().map(move || app.clone()))
         .and_then(handler::handle_registration);
 
     let routes = ws_route.with(warp::cors().allow_any_origin());
-    println!("WS open on {}", WS_ADDR);
-    warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
+    println!("WS open on {}", addr);
+    warp::serve(routes)
+    .run(addr)
+    .await;
 }
 
 async fn run_http(app: Arc<Mutex<AppState>>) {
-    println!("Preparing HTTP...");
 
     let new_service = make_service_fn(move |_| {
         let app_capture = app.clone();
@@ -243,9 +246,7 @@ async fn run_http(app: Arc<Mutex<AppState>>) {
         }
     });
 
-    let addr = "127.0.0.1:8080"
-        .parse::<SocketAddr>()
-        .expect("http address creation failed");
+    let addr = build_addr(get_addr_str(Protocol::HTTP));
     let server = Server::bind(&addr).serve(new_service);
 
     println!("HTTP open on {}", addr);

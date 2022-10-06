@@ -22,6 +22,14 @@ pub const CREATE_ROOM_ENDPOINT: &str = "/create_room";
 pub const JOIN_ROOM_ENDPOINT: &str = "/join_room";
 pub const HEARTBEAT_ENDPOINT: &str = "/heartbeat";
 
+pub const ADDR_HTTP: &str = "127.0.0.1:8080";
+pub const ADDR_WS:   &str = "127.0.0.1:8000";
+pub const LOCALHOST: &str = "127.0.0.1";
+
+pub const PORT_HTTP: &str = ":8080";
+pub const PORT_WS:   &str = ":8000";
+
+
 #[derive(Serialize, Deserialize)]
 pub struct ClientUuid(pub Uuid);
 #[derive(Serialize, Deserialize)]
@@ -104,5 +112,23 @@ impl Client {
             name: name.to_string(),
             sender,
         }
+    }
+}
+pub enum Protocol {
+    HTTP,WS
+}
+
+pub fn get_addr_str(prot : Protocol) -> String{
+    let args: Vec<String> = std::env::args().collect();
+
+    let addr = if args.len() == 1 {
+        LOCALHOST.to_string()
+    } else {
+        args[1].clone()
+    };
+
+    match prot {
+        Protocol::HTTP => addr + PORT_HTTP,
+        Protocol::WS =>   addr + PORT_WS,
     }
 }

@@ -15,10 +15,8 @@ use tungstenite::protocol::Message as TungsteniteMsg;
 use uuid::Uuid;
 use JNP2_Rust_Chatter::common::{ReqData::*, *};
 
-const ADDR: &str = "http://0.0.0.0:8080";
-const WS_ADDR: &str = "ws://127.0.0.1:8000/ws";
-const EXIT_COMMAND: &str = "/exit"; // exits the entire app
-const LOBBY_COMMAND: &str = "/lobby"; // goes back to the lobby
+const CMD_EXIT:  &str = "/exit"; // exits the entire app
+const CMD_LOBBY: &str = "/lobby"; // goes back to the lobby
 
 type WSStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -76,7 +74,7 @@ where
 {
     let data = serde_json::to_string(&body)?;
     let resp = reqwest_client
-        .post(ADDR.to_string() + endpoint)
+        .post("http://".to_string() + &get_addr_str(Protocol::HTTP) + endpoint)
         .body(data)
         .send()
         .await?;
@@ -180,8 +178,8 @@ async fn register_or_login(
 
 async fn do_get_room(reqwest_client: &ReqwestClient) -> Option<(String, Uuid)> {
     let room_name = get_nonempty_line("room name");
-    println!("HELLO, {}", room_name.len());
-    if room_name == EXIT_COMMAND {
+
+    if room_name == CMD_EXIT {
         None
     } else {
         let room_uuid = match get_room(&room_name, reqwest_client)
@@ -218,22 +216,24 @@ async fn do_join_room(
 }
 
 async fn keep_alive(client_uuid: Uuid) {
-    const HEARTBEAT_TIMEOUT: u64 = 1000;
+
+    const HEARTBEAT_TIMEOUT: u64 = 2000;
     let heartbeat_data = HeartbeatData(ClientUuid(client_uuid));
     let heartbeat_str = serde_json::to_string(&heartbeat_data).expect("Parsing heartbeat failed");
     let client = ReqwestClient::new();
+    
     loop {
         thread::sleep(Duration::from_millis(HEARTBEAT_TIMEOUT));
         let heartbeat_str = heartbeat_str.clone();
 
         let resp = client
-            .post(ADDR.to_string() + HEARTBEAT_ENDPOINT)
+            .post("http://".to_string() + &get_addr_str(Protocol::HTTP) + HEARTBEAT_ENDPOINT)
             .body(heartbeat_str)
             .send()
             .await
-            .expect("Heartbeat request failed!");
+            .expect("Heartbeat request failed and app will close");
         if resp.status() != StatusCode::OK {
-            panic!("Heartbeat request failed!");
+            panic!("Heartbeat request failed and app will close");
         }
     }
 }
@@ -241,7 +241,7 @@ async fn keep_alive(client_uuid: Uuid) {
 async fn chat_client() {
     print_greeting();
     let reqwest_client = ReqwestClient::new();
-    let (mut ws_stream, _) = connect_async(WS_ADDR)
+    let (mut ws_stream, _) = connect_async("ws://".to_string() + &get_addr_str(Protocol::WS))
         .await
         .expect("Failed to connect to the WS server!");
 
@@ -249,12 +249,6 @@ async fn chat_client() {
     let keep_alive_handle = tokio::spawn(keep_alive(client_uuid));
 
     loop {
-        // the lobby loop - select your room here
-        if keep_alive_handle.is_finished() {
-            //TODO: is this a good way of checking if this panicked?
-            panic!("Keep-alive failed!");
-        }
-
         if let Some((room_name, room_uuid)) = do_get_room(&reqwest_client).await {
             do_join_room(
                 client_uuid,
@@ -273,15 +267,19 @@ async fn chat_client() {
                     let mut buf_stdin = tokio::io::BufReader::new(tokio::io::stdin());
                     buf_stdin.read_line(&mut line).await.unwrap();
                     tx_stdin.send(line.trim().to_string()).await.unwrap();
+
+                    if line.trim_end_matches("") == CMD_LOBBY {
+                        break;
+                    }
                 }
             };
             let stdin_loop = tokio::task::spawn(stdin_loop);
 
             loop {
-                // the room loop - send your message
                 if keep_alive_handle.is_finished() {
-                    panic!("Keep-alive failed!");
+                    return
                 }
+
                 tokio::select! {
                     ws_msg = ws_stream.next() => {
                         match ws_msg {
@@ -308,11 +306,11 @@ async fn chat_client() {
                                 let mut should_break = false;
                                 let mut should_return = false;
                                 let response =
-                                    if msg.contents == EXIT_COMMAND {
+                                    if msg.contents == CMD_EXIT {
                                         should_return = true;
                                         ws_stream.close(None).await.expect("Closing ws stream failed!");
                                         exit_app(&reqwest_client, client_uuid).await
-                                    } else if msg.contents == LOBBY_COMMAND {
+                                    } else if msg.contents == CMD_LOBBY {
                                         should_break = true;
                                         leave_room(&reqwest_client, client_uuid, room_uuid).await
                                     } else {
