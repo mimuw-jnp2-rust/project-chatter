@@ -220,25 +220,25 @@ async fn join_room(
 
 async fn keep_alive(client_uuid: Uuid) {
     //TODO: test this
-    thread::sleep(Duration::from_millis(2000));
-    panic!("sayonara, keep-alive!");
+    // thread::sleep(Duration::from_millis(2000));
+    // panic!("sayonara, keep-alive!");
 
-    // const HEARTBEAT_TIMEOUT: u64 = 1000;
-    // let heartbeat_data = HeartbeatData(ClientUuid(client_uuid));
-    // let heartbeat_str = serde_json::to_string(&heartbeat_data).expect("Parsing heartbeat failed");
-    // let client = ReqwestClient::new();
-    // loop {
-    //     thread::sleep(Duration::from_millis(HEARTBEAT_TIMEOUT));
-    //     let heartbeat_str = heartbeat_str.clone();
-    //
-    //     // TODO: info on status != 200
-    //     let _resp = client
-    //         .post(ADDR.to_string() + HEARTBEAT_ENDPOINT)
-    //         .body(heartbeat_str)
-    //         .send()
-    //         .await
-    //         .expect("Heartbeat request failed");
-    // }
+    const HEARTBEAT_TIMEOUT: u64 = 1000;
+    let heartbeat_data = HeartbeatData(ClientUuid(client_uuid));
+    let heartbeat_str = serde_json::to_string(&heartbeat_data).expect("Parsing heartbeat failed");
+    let client = ReqwestClient::new();
+    loop {
+        thread::sleep(Duration::from_millis(HEARTBEAT_TIMEOUT));
+        let heartbeat_str = heartbeat_str.clone();
+
+        // TODO: info on status != 200
+        let _resp = client
+            .post(ADDR.to_string() + HEARTBEAT_ENDPOINT)
+            .body(heartbeat_str)
+            .send()
+            .await
+            .expect("Heartbeat request failed");
+    }
 }
 
 async fn chat_client() {
@@ -309,8 +309,7 @@ async fn chat_client() {
                                 if msg.contents == EXIT_COMMAND {
                                     should_return = true;
                                     ws_stream.close(None).await; //TODO: perhaps check for this error?
-                                    exit_app(&reqwest_client, client_uuid).await;
-                                    temp
+                                    exit_app(&reqwest_client, client_uuid).await
                                 } else if msg.contents == LOBBY_COMMAND {
                                     should_break = true;
                                     leave_room(&reqwest_client, client_uuid, room_uuid).await
