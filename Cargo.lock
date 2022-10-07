@@ -3,31 +3,6 @@
 version = 3
 
 [[package]]
-name = "JNP2-Rust-Chatter"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-std",
- "async-trait",
- "bytes 0.5.6",
- "chrono",
- "dirs",
- "futures",
- "hyper",
- "rand",
- "reqwest",
- "route-recognizer",
- "serde",
- "serde_json",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite",
- "tungstenite",
- "uuid",
- "warp",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -252,6 +227,30 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+
+[[package]]
+name = "chatter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-std",
+ "async-trait",
+ "bytes 0.5.6",
+ "chrono",
+ "dirs",
+ "futures",
+ "hyper",
+ "reqwest",
+ "route-recognizer",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite",
+ "tungstenite",
+ "uuid",
+ "warp",
+]
 
 [[package]]
 name = "chrono"

@@ -1,5 +1,5 @@
 [package]
-name = "JNP2-Rust-Chatter"
+name = "chatter"
 authors = ["Kacper Kramarz-Fernandez, Jan Zembowicz"]
 version = "0.1.0"
 edition = "2021"
@@ -41,6 +41,3 @@ features = [
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
     "serde"              # Serialization
 ]
-
-[dev-dependencies]
-rand = "0.8"

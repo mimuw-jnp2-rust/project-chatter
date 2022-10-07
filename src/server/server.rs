@@ -5,6 +5,7 @@ mod ws;
 
 use crate::logging::{log_msg, setup_app_dir};
 use crate::router::Router;
+use chatter::common::*;
 use hyper::{
     body::to_bytes,
     service::{make_service_fn, service_fn},
@@ -17,7 +18,6 @@ use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::{thread, time};
 use warp::{Filter, Rejection};
-use JNP2_Rust_Chatter::common::*;
 
 type Response = hyper::Response<Body>;
 type Error = Box<dyn std::error::Error + Send + Sync + 'static>;

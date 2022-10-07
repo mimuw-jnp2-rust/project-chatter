@@ -1,12 +1,12 @@
 use std::collections::hash_map::Entry;
 use std::fmt::Display;
 
+use chatter::common::{
+    ChatMessage, ReqData, Room, RoomUuid, CLIENT_UUID_HEADER, ROOM_UUID_HEADER, SUCCESS_HEADER,
+};
 use hyper::StatusCode;
 use uuid::Uuid;
 use warp::Reply;
-use JNP2_Rust_Chatter::common::{
-    ChatMessage, ReqData, Room, RoomUuid, CLIENT_UUID_HEADER, ROOM_UUID_HEADER, SUCCESS_HEADER,
-};
 
 use crate::logging::log_msg;
 use crate::AppState;

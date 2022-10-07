@@ -33,9 +33,9 @@ pub const PORT_WS: &str = ":8000";
 pub struct ClientUuid(pub Uuid);
 #[derive(Serialize, Deserialize, Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct RoomUuid(pub Uuid);
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Serialize, Deserialize, Eq, PartialEq)]
 pub struct ClientName(pub String);
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Serialize, Deserialize, Eq, PartialEq)]
 pub struct RoomName(pub String);
 
 #[derive(Serialize, Deserialize)]
