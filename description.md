@@ -12,6 +12,14 @@ Then, they can:
 
 Joining and leaving a room results in a notification of the event being sent to remaining users.
 
-The protocol used for client to server communication is HTTP. The server communicates with the client through a WebSocket connection. This model is alike to the one used by LinkedIn's chat service.
-
 Chat history for each room is stored in hidden a directory created by the app under the home directory.
+
+ - Communication architecture - 
+
+ chatter users 2 protocol communication style. HTTP for server control, and TCP WebSocket for asynchronous server responses. Such architecture provide convienient separation of control and broadcast data flow. Reduces also amount of required code, combining best of both worlds - HTTP transactions and error notifications and WS agility. 
+
+ - HTTP data flow: CLIENT -> SERVER, transaction result handling on app protocol layer
+ - WS   data flow: SERVER -> CLIENT, no transaction result handling on app protocol layer (only TCP handshake) 
+
+ Client uses HTTP to send messages, room joining/leaving, registration                    
+ Server uses websockets to transfer messages to listening clients with room distingishing 
