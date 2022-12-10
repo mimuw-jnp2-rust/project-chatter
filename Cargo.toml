@@ -1,0 +1,43 @@
+[package]
+name = "chatter"
+authors = ["Kacper Kramarz-Fernandez, Jan Zembowicz"]
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "client"
+path = "src/client/client.rs"
+
+[[bin]]
+name = "server"
+path = "src/server/server.rs"
+
+[dependencies]
+anyhow = "1.0"
+async-std = "1"
+async-trait = "0.1"
+bytes = "0.5"
+chrono = { version = "0.4.19", features = ["serde"] }
+dirs = "4.0.0"
+futures = { version = "0.3.6", default-features = false, features = ["async-await"] }
+hyper = "0.14"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+route-recognizer = "0.2"
+serde = {version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version= "1", features = ["full"] }
+tokio-stream = "0.1.6"
+tokio-tungstenite = "0.17.1"
+tungstenite = "0.17.2"
+warp = "0.3"
+
+[dependencies.uuid]
+version = "1.0.0"
+features = [
+    "v4",                # Lets you generate random UUIDs
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+    "serde"              # Serialization
+]
